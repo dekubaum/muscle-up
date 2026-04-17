@@ -69,17 +69,6 @@ async function loadMainScreen(userName) {
   retryPendingSessions();
 
   Sync.subscribeToPartner(state.partnerName, renderPartnerCardFromSession);
-
-  window.addEventListener('online', () => {
-    state.isOnline = true;
-    retryPendingSessions();
-    renderPartnerCard();
-  });
-  window.addEventListener('offline', () => {
-    state.isOnline = false;
-    document.getElementById('partner-card').innerHTML =
-      '<p class="offline-text">Offline</p>';
-  });
 }
 
 // ── Phase banner ───────────────────────────────────────────────────────────
@@ -331,9 +320,24 @@ async function retryPendingSessions() {
   lsSet('mu_pending_sessions', remaining);
 }
 
+// ── Network listeners (registered once) ───────────────────────────────────
+function initNetworkListeners() {
+  window.addEventListener('online', () => {
+    state.isOnline = true;
+    retryPendingSessions();
+    renderPartnerCard();
+  });
+  window.addEventListener('offline', () => {
+    state.isOnline = false;
+    document.getElementById('partner-card').innerHTML =
+      '<p class="offline-text">Offline</p>';
+  });
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   initProfileSelection();
+  initNetworkListeners();
   const savedUser = lsGet('mu_user');
   if (savedUser) {
     loadMainScreen(savedUser);
