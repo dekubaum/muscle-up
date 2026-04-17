@@ -314,8 +314,22 @@ async function advancePhase() {
   renderPlanReference();
 }
 
-// ── Stub (replaced in 7g) ──────────────────────────────────────────────────
-function retryPendingSessions() {}
+// ── Offline / pending session retry ────────────────────────────────────────
+async function retryPendingSessions() {
+  const pending = lsGet('mu_pending_sessions') || [];
+  if (!pending.length) return;
+
+  const remaining = [];
+  for (const session of pending) {
+    const { error } = await DB.saveSession(
+      session.user_name,
+      session.phase,
+      session.exercises
+    );
+    if (error) remaining.push(session);
+  }
+  lsSet('mu_pending_sessions', remaining);
+}
 
 // ── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
