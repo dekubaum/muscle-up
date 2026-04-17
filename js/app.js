@@ -32,7 +32,7 @@ function initProfileSelection() {
   document.querySelectorAll('.btn-profile').forEach(btn => {
     btn.addEventListener('click', () => {
       lsSet('mu_user', btn.dataset.user);
-      loadMainScreen(btn.dataset.user);
+      loadMainScreen(btn.dataset.user).catch(err => console.error('loadMainScreen failed:', err));
     });
   });
 }
@@ -183,7 +183,14 @@ async function renderPartnerCard() {
     return;
   }
 
-  const { data: session } = await DB.getLatestPartnerSession(state.partnerName);
+  let session = null;
+  try {
+    const result = await DB.getLatestPartnerSession(state.partnerName);
+    session = result.data;
+  } catch (e) {
+    card.innerHTML = '<p class="offline-text">Offline</p>';
+    return;
+  }
 
   if (!session) {
     const name = state.partnerName === 'dennis' ? 'Dennis' : 'Clemens';
@@ -196,15 +203,21 @@ async function renderPartnerCard() {
 
 function renderPartnerCardFromSession(session) {
   const name = session.user_name === 'dennis' ? 'Dennis' : 'Clemens';
-  const setsCount = Array.isArray(session.exercises) ? session.exercises.length : 0;
   const elapsed = timeAgo(session.created_at);
-
+  const phaseData = PLAN.phases[session.phase - 1];
+  let exerciseText = '';
+  if (phaseData && Array.isArray(session.exercises)) {
+    const covered = phaseData.exercises.filter(ex =>
+      session.exercises.some(id => id.startsWith(ex.id + '-'))
+    ).length;
+    exerciseText = `${covered}/${phaseData.exercises.length} Übungen · `;
+  }
   document.getElementById('partner-card').innerHTML = `
     <div class="partner-info">
       <span class="partner-name">${name}</span>
       <span class="partner-phase-badge">Phase ${session.phase}</span>
     </div>
-    <div class="partner-detail">${setsCount} Sätze · ${elapsed}</div>
+    <div class="partner-detail">${exerciseText}${elapsed}</div>
   `;
 }
 
@@ -258,6 +271,13 @@ function checkPhaseTransition() {
     return;
   }
 
+  // Check if user already dismissed this transition
+  const dismissKey = `mu_phase${state.currentPhase}_transition_dismissed`;
+  if (lsGet(dismissKey)) {
+    banner.classList.add('hidden');
+    return;
+  }
+
   banner.classList.remove('hidden');
 
   if (state.currentPhase === 1) {
@@ -290,14 +310,32 @@ function checkPhaseTransition() {
   }
 
   btn.onclick = advancePhase;
+
+  // Add dismiss button
+  if (!content.querySelector('.btn-dismiss')) {
+    const dismissBtn = document.createElement('button');
+    dismissBtn.textContent = 'Später';
+    dismissBtn.className = 'btn-dismiss';
+    dismissBtn.style.cssText = 'background:none;border:none;color:var(--text-muted);font-size:0.85rem;cursor:pointer;margin-top:8px;padding:4px 0;';
+    dismissBtn.addEventListener('click', () => {
+      lsSet(dismissKey, true);
+      banner.classList.add('hidden');
+    });
+    content.appendChild(dismissBtn);
+  }
 }
 
 async function advancePhase() {
+  document.getElementById('btn-advance-phase').disabled = true;
   state.currentPhase++;
   state.sessionCount = 0;
 
   lsSet(`mu_phase_${state.userName}`, state.currentPhase);
-  await DB.upsertProfile(state.userName, state.currentPhase);
+  try {
+    await DB.upsertProfile(state.userName, state.currentPhase);
+  } catch (e) {
+    console.warn('Phase sync to Supabase failed, will retry on next load:', e);
+  }
 
   document.getElementById('phase-transition').classList.add('hidden');
   renderPhaseBanner();
@@ -315,7 +353,8 @@ async function retryPendingSessions() {
     const { error } = await DB.saveSession(
       session.user_name,
       session.phase,
-      session.exercises
+      session.exercises,
+      session.session_date
     );
     if (error) remaining.push(session);
   }
@@ -342,7 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initNetworkListeners();
   const savedUser = lsGet('mu_user');
   if (savedUser) {
-    loadMainScreen(savedUser);
+    loadMainScreen(savedUser).catch(err => console.error('loadMainScreen failed:', err));
   } else {
     showScreen('screen-profile');
   }

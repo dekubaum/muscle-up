@@ -31,13 +31,13 @@ window.DB = (() => {
       .eq('phase', phase);
   }
 
-  async function saveSession(userName, phase, exercises) {
+  async function saveSession(userName, phase, exercises, sessionDate) {
     return client
       .from('sessions')
       .insert({
         user_name: userName,
         phase,
-        session_date: new Date().toISOString().split('T')[0],
+        session_date: sessionDate || new Date().toISOString().split('T')[0],
         exercises,
       });
   }
