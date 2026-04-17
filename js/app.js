@@ -97,8 +97,93 @@ function renderPhaseBanner() {
   document.getElementById('progress-fill').style.width = `${pct}%`;
 }
 
+// ── Workout rendering ──────────────────────────────────────────────────────
+function renderWorkout() {
+  const phase = PLAN.phases[state.currentPhase - 1];
+  const list = document.getElementById('exercise-list');
+  list.innerHTML = '';
+  state.checkedSets.clear();
+
+  phase.exercises.forEach(exercise => {
+    const row = document.createElement('div');
+    row.className = 'exercise-row';
+
+    const info = document.createElement('div');
+    info.className = 'exercise-info';
+    info.innerHTML =
+      `<div class="exercise-name">${exercise.name}</div>` +
+      `<div class="exercise-detail">${exercise.sets} × ${exercise.reps} — ${exercise.focus}</div>`;
+
+    const boxes = document.createElement('div');
+    boxes.className = 'exercise-checkboxes';
+
+    for (let i = 0; i < exercise.sets; i++) {
+      const setId = `${exercise.id}-${i}`;
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = setId;
+      cb.addEventListener('change', () => {
+        if (cb.checked) state.checkedSets.add(setId);
+        else state.checkedSets.delete(setId);
+        updateCompleteButton(phase);
+      });
+      boxes.appendChild(cb);
+    }
+
+    row.appendChild(info);
+    row.appendChild(boxes);
+    list.appendChild(row);
+  });
+
+  document.getElementById('btn-complete').disabled = true;
+  document.getElementById('btn-complete').onclick = completeSession;
+}
+
+function updateCompleteButton(phase) {
+  // Every exercise must have at least one set checked
+  const allCovered = phase.exercises.every(ex =>
+    Array.from({ length: ex.sets }, (_, i) => `${ex.id}-${i}`)
+      .some(id => state.checkedSets.has(id))
+  );
+  document.getElementById('btn-complete').disabled = !allCovered;
+}
+
+// ── Session completion ─────────────────────────────────────────────────────
+async function completeSession() {
+  const exercises = Array.from(state.checkedSets);
+  const sessionRecord = {
+    id: Date.now(),
+    user_name: state.userName,
+    phase: state.currentPhase,
+    session_date: new Date().toISOString().split('T')[0],
+    exercises,
+  };
+
+  // Write to localStorage first (offline safety)
+  const pending = lsGet('mu_pending_sessions') || [];
+  pending.push(sessionRecord);
+  lsSet('mu_pending_sessions', pending);
+
+  // Attempt Supabase write
+  const { error } = await DB.saveSession(
+    sessionRecord.user_name,
+    sessionRecord.phase,
+    sessionRecord.exercises
+  );
+
+  if (!error) {
+    const updated = (lsGet('mu_pending_sessions') || [])
+      .filter(s => s.id !== sessionRecord.id);
+    lsSet('mu_pending_sessions', updated);
+  }
+
+  state.sessionCount++;
+  renderPhaseBanner();
+  renderWorkout();
+  checkPhaseTransition();
+}
+
 // ── Stubs (replaced in subsequent steps) ──────────────────────────────────
-function renderWorkout() {}
 function renderPlanReference() {}
 function checkPhaseTransition() {}
 async function renderPartnerCard() {
