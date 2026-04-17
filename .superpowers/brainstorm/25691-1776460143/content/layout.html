@@ -1,0 +1,104 @@
+<h2>Main Screen Layout</h2>
+<p class="subtitle">How should the app be structured on a phone screen?</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#1a1a2e;border-radius:8px;padding:12px;font-family:sans-serif;color:#fff;min-height:220px;display:flex;flex-direction:column;gap:8px;">
+        <div style="background:#16213e;border-radius:6px;padding:8px 10px;font-size:11px;color:#a0a0c0;display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-weight:600;color:#e0e0ff;">Phase 1 · Woche 2</span>
+          <span style="background:#4f46e5;padding:2px 8px;border-radius:10px;font-size:10px;">3/6 Sessions</span>
+        </div>
+        <div style="background:#16213e;border-radius:6px;padding:10px;flex:1;">
+          <div style="font-size:10px;color:#a0a0c0;margin-bottom:6px;">HEUTIGE EINHEIT</div>
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;"><span style="color:#22c55e;font-size:14px;">✓</span> Explosive Pull-Ups · 4×5</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;"><span style="color:#22c55e;font-size:14px;">✓</span> Chest-to-Bar (Band) · 3×6</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;"><span style="color:#4f46e5;font-size:14px;">○</span> Dips · 4×8</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;"><span style="color:#4f46e5;font-size:14px;">○</span> Hollow Body · 3×20s</div>
+          </div>
+        </div>
+        <div style="background:#16213e;border-radius:6px;padding:8px 10px;font-size:10px;color:#a0a0c0;display:flex;justify-content:space-between;">
+          <span>Clemens · Phase 1 · Session 2</span>
+          <span style="color:#60a5fa;">vor 2h</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Stacked Focus</h3>
+      <p>Phase header → today's workout → partner status. Everything in one scrollable column. Clean, workout-first.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#1a1a2e;border-radius:8px;padding:12px;font-family:sans-serif;color:#fff;min-height:220px;display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;gap:6px;border-bottom:1px solid #2a2a4a;padding-bottom:8px;">
+          <div style="flex:1;text-align:center;font-size:11px;color:#4f46e5;border-bottom:2px solid #4f46e5;padding-bottom:4px;font-weight:600;">Training</div>
+          <div style="flex:1;text-align:center;font-size:11px;color:#a0a0c0;padding-bottom:4px;">Plan</div>
+          <div style="flex:1;text-align:center;font-size:11px;color:#a0a0c0;padding-bottom:4px;">Fortschritt</div>
+        </div>
+        <div style="background:#16213e;border-radius:6px;padding:10px;flex:1;">
+          <div style="font-size:10px;color:#a0a0c0;margin-bottom:6px;">PHASE 1 · SESSION 3</div>
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;"><span style="color:#22c55e;">✓</span> Explosive Pull-Ups</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;"><span style="color:#4f46e5;">○</span> Chest-to-Bar</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:11px;"><span style="color:#4f46e5;">○</span> Dips</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <div style="flex:1;background:#16213e;border-radius:6px;padding:6px;text-align:center;">
+            <div style="font-size:9px;color:#a0a0c0;">Du</div>
+            <div style="font-size:11px;font-weight:600;">Phase 1</div>
+          </div>
+          <div style="flex:1;background:#16213e;border-radius:6px;padding:6px;text-align:center;">
+            <div style="font-size:9px;color:#a0a0c0;">Clemens</div>
+            <div style="font-size:11px;font-weight:600;">Phase 1</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Tab Navigation</h3>
+      <p>Tabs for Training / Plan / Fortschritt. Partner shown as a mini summary at bottom. More structure, more tapping.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#1a1a2e;border-radius:8px;padding:12px;font-family:sans-serif;color:#fff;min-height:220px;display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="font-weight:700;font-size:13px;">Dennis</span>
+          <span style="font-size:10px;color:#a0a0c0;">Phase 1 · 3/6</span>
+        </div>
+        <div style="display:flex;gap:6px;flex:1;">
+          <div style="flex:1;background:#16213e;border-radius:6px;padding:8px;">
+            <div style="font-size:9px;color:#a0a0c0;margin-bottom:5px;">HEUTE</div>
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <div style="font-size:10px;display:flex;align-items:center;gap:4px;"><span style="color:#22c55e;">✓</span>Explosive PU</div>
+              <div style="font-size:10px;display:flex;align-items:center;gap:4px;"><span style="color:#22c55e;">✓</span>Chest-to-Bar</div>
+              <div style="font-size:10px;display:flex;align-items:center;gap:4px;"><span style="color:#4f46e5;">○</span>Dips</div>
+              <div style="font-size:10px;display:flex;align-items:center;gap:4px;"><span style="color:#4f46e5;">○</span>Hollow Body</div>
+            </div>
+          </div>
+          <div style="flex:1;background:#16213e;border-radius:6px;padding:8px;opacity:0.7;">
+            <div style="font-size:9px;color:#60a5fa;margin-bottom:5px;">CLEMENS · vor 1h</div>
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <div style="font-size:10px;display:flex;align-items:center;gap:4px;"><span style="color:#22c55e;">✓</span>Explosive PU</div>
+              <div style="font-size:10px;display:flex;align-items:center;gap:4px;"><span style="color:#22c55e;">✓</span>Chest-to-Bar</div>
+              <div style="font-size:10px;display:flex;align-items:center;gap:4px;"><span style="color:#22c55e;">✓</span>Dips</div>
+              <div style="font-size:10px;display:flex;align-items:center;gap:4px;"><span style="color:#4f46e5;">○</span>Hollow Body</div>
+            </div>
+          </div>
+        </div>
+        <div style="background:#16213e;border-radius:6px;padding:6px 10px;font-size:10px;color:#a0a0c0;text-align:center;">↓ Scroll für Trainingsplan</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Side-by-Side</h3>
+      <p>Your workout and Clemens' last session shown side-by-side. Instant comparison, partner progress always visible. Plan scrollable below.</p>
+    </div>
+  </div>
+
+</div>
