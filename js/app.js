@@ -74,8 +74,9 @@ async function loadMainScreen(userName) {
 // ── Phase banner ───────────────────────────────────────────────────────────
 function renderPhaseBanner() {
   const phase = PLAN.phases[state.currentPhase - 1];
-  const weeksEnd = parseInt(phase.weeks.split('–')[1]);
-  const week = Math.min(Math.floor(state.sessionCount / 2) + 1, weeksEnd);
+  const [weeksStart, weeksEnd] = phase.weeks.split('–').map(Number);
+  const phaseWeekCount = weeksEnd - weeksStart + 1;
+  const week = Math.min(Math.floor(state.sessionCount / 2) + 1, phaseWeekCount);
 
   document.getElementById('phase-label').textContent =
     `Phase ${phase.number} · Woche ${week}`;
@@ -139,6 +140,7 @@ function updateCompleteButton(phase) {
 
 // ── Session completion ─────────────────────────────────────────────────────
 async function completeSession() {
+  document.getElementById('btn-complete').disabled = true;
   const exercises = Array.from(state.checkedSets);
   const sessionRecord = {
     id: Date.now(),
