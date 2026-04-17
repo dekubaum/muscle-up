@@ -255,8 +255,66 @@ function renderPlanReference() {
   `).join('');
 }
 
-// ── Stubs (replaced in subsequent steps) ──────────────────────────────────
-function checkPhaseTransition() {}
+// ── Phase transition ───────────────────────────────────────────────────────
+function checkPhaseTransition() {
+  const phase = PLAN.phases[state.currentPhase - 1];
+  const banner = document.getElementById('phase-transition');
+  const content = document.getElementById('phase-transition-content');
+  const btn = document.getElementById('btn-advance-phase');
+
+  if (state.sessionCount < phase.totalSessions || state.currentPhase >= 3) {
+    banner.classList.add('hidden');
+    return;
+  }
+
+  banner.classList.remove('hidden');
+
+  if (state.currentPhase === 1) {
+    content.innerHTML = `
+      <h3>Bereit für Phase 2?</h3>
+      <p>Du hast alle ${phase.totalSessions} Sessions abgeschlossen!</p>
+    `;
+    btn.disabled = false;
+  } else if (state.currentPhase === 2) {
+    content.innerHTML = `
+      <h3>Bereit für Phase 3?</h3>
+      <p>Bestätige die folgenden Punkte bevor du weitermachst:</p>
+      <div class="checklist">
+        ${PLAN.phase3Checklist.map((item, i) => `
+          <label class="checklist-item">
+            <input type="checkbox" class="phase3-check" data-index="${i}">
+            ${item}
+          </label>
+        `).join('')}
+      </div>
+    `;
+    btn.disabled = true;
+
+    content.querySelectorAll('.phase3-check').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const checked = content.querySelectorAll('.phase3-check:checked').length;
+        btn.disabled = checked < PLAN.phase3Checklist.length;
+      });
+    });
+  }
+
+  btn.onclick = advancePhase;
+}
+
+async function advancePhase() {
+  state.currentPhase++;
+  state.sessionCount = 0;
+
+  lsSet(`mu_phase_${state.userName}`, state.currentPhase);
+  await DB.upsertProfile(state.userName, state.currentPhase);
+
+  document.getElementById('phase-transition').classList.add('hidden');
+  renderPhaseBanner();
+  renderWorkout();
+  renderPlanReference();
+}
+
+// ── Stub (replaced in 7g) ──────────────────────────────────────────────────
 function retryPendingSessions() {}
 
 // ── Init ───────────────────────────────────────────────────────────────────
