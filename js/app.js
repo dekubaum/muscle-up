@@ -226,8 +226,36 @@ function timeAgo(isoString) {
   return `vor ${Math.floor(secs / 86400)} Tagen`;
 }
 
+// ── Plan reference ─────────────────────────────────────────────────────────
+function renderPlanReference() {
+  const container = document.getElementById('plan-reference');
+
+  container.innerHTML = PLAN.phases.map(phase => `
+    <div class="plan-phase ${phase.number === state.currentPhase ? 'active' : ''}">
+      <div class="plan-phase-title">${phase.name} (Woche ${phase.weeks})</div>
+      <table class="plan-table">
+        <thead>
+          <tr>
+            <th>Übung</th>
+            <th>Sätze × Wdh.</th>
+            <th>Fokus</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${phase.exercises.map(ex => `
+            <tr>
+              <td>${ex.name}</td>
+              <td>${ex.sets} × ${ex.reps}</td>
+              <td>${ex.focus}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `).join('');
+}
+
 // ── Stubs (replaced in subsequent steps) ──────────────────────────────────
-function renderPlanReference() {}
 function checkPhaseTransition() {}
 function retryPendingSessions() {}
 
