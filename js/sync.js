@@ -4,7 +4,7 @@ window.Sync = (() => {
 
   function subscribeToPartner(partnerName, onNewSession) {
     channel = DB.client
-      .channel('partner-sessions')
+      .channel(`partner-sessions-${partnerName}`)
       .on(
         'postgres_changes',
         {

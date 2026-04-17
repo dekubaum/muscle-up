@@ -3,6 +3,10 @@ window.DB = (() => {
   const SUPABASE_URL = 'YOUR_SUPABASE_URL';
   const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
 
+  if (SUPABASE_URL === 'YOUR_SUPABASE_URL') {
+    throw new Error('js/db.js: Replace SUPABASE_URL and SUPABASE_ANON_KEY before running.');
+  }
+
   const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   async function getProfile(userName) {
@@ -22,7 +26,7 @@ window.DB = (() => {
   async function getSessionCount(userName, phase) {
     return client
       .from('sessions')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('user_name', userName)
       .eq('phase', phase);
   }
