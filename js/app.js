@@ -183,13 +183,52 @@ async function completeSession() {
   checkPhaseTransition();
 }
 
+// ── Partner card ───────────────────────────────────────────────────────────
+async function renderPartnerCard() {
+  const card = document.getElementById('partner-card');
+
+  if (!state.isOnline) {
+    card.innerHTML = '<p class="offline-text">Offline</p>';
+    return;
+  }
+
+  const { data: session } = await DB.getLatestPartnerSession(state.partnerName);
+
+  if (!session) {
+    const name = state.partnerName === 'dennis' ? 'Dennis' : 'Clemens';
+    card.innerHTML = `<p class="no-data-text">${name} hat noch keine Session.</p>`;
+    return;
+  }
+
+  renderPartnerCardFromSession(session);
+}
+
+function renderPartnerCardFromSession(session) {
+  const name = session.user_name === 'dennis' ? 'Dennis' : 'Clemens';
+  const setsCount = Array.isArray(session.exercises) ? session.exercises.length : 0;
+  const elapsed = timeAgo(session.created_at);
+
+  document.getElementById('partner-card').innerHTML = `
+    <div class="partner-info">
+      <span class="partner-name">${name}</span>
+      <span class="partner-phase-badge">Phase ${session.phase}</span>
+    </div>
+    <div class="partner-detail">${setsCount} Sätze · ${elapsed}</div>
+  `;
+}
+
+// ── Time helper ────────────────────────────────────────────────────────────
+function timeAgo(isoString) {
+  const secs = Math.floor((Date.now() - new Date(isoString)) / 1000);
+  if (secs < 60) return 'gerade eben';
+  if (secs < 3600) return `vor ${Math.floor(secs / 60)} Min.`;
+  if (secs < 86400) return `vor ${Math.floor(secs / 3600)} Std.`;
+  return `vor ${Math.floor(secs / 86400)} Tagen`;
+}
+
 // ── Stubs (replaced in subsequent steps) ──────────────────────────────────
 function renderPlanReference() {}
 function checkPhaseTransition() {}
-async function renderPartnerCard() {
-  document.getElementById('partner-card').innerHTML = '<p class="no-data-text">Lade...</p>';
-}
-function renderPartnerCardFromSession() {}
 function retryPendingSessions() {}
 
 // ── Init ───────────────────────────────────────────────────────────────────
