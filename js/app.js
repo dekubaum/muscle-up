@@ -37,19 +37,73 @@ function initProfileSelection() {
   });
 }
 
-// ── Placeholder for loadMainScreen (implemented in 7b) ────────────────────
+// ── Main screen loader ─────────────────────────────────────────────────────
 async function loadMainScreen(userName) {
   state.userName = userName;
   state.partnerName = userName === 'dennis' ? 'clemens' : 'dennis';
   showScreen('screen-main');
-  // Phase banner, workout, partner card etc. added in next steps
+
+  // Unsubscribe any previous real-time subscription before re-subscribing
+  Sync.unsubscribe();
+
+  // Load phase from localStorage immediately (instant render), then sync
+  state.currentPhase = lsGet(`mu_phase_${userName}`) || 1;
+
+  const { data: profile } = await DB.getProfile(userName);
+  if (profile) {
+    state.currentPhase = profile.current_phase;
+    lsSet(`mu_phase_${userName}`, profile.current_phase);
+  } else {
+    await DB.upsertProfile(userName, state.currentPhase);
+  }
+
+  const { count } = await DB.getSessionCount(userName, state.currentPhase);
+  state.sessionCount = count || 0;
+
+  renderPhaseBanner();
+  renderWorkout();
+  renderPlanReference();
+  checkPhaseTransition();
+
+  await renderPartnerCard();
+  retryPendingSessions();
+
+  Sync.subscribeToPartner(state.partnerName, renderPartnerCardFromSession);
+
+  window.addEventListener('online', () => {
+    state.isOnline = true;
+    retryPendingSessions();
+    renderPartnerCard();
+  });
+  window.addEventListener('offline', () => {
+    state.isOnline = false;
+    document.getElementById('partner-card').innerHTML =
+      '<p class="offline-text">Offline</p>';
+  });
+}
+
+// ── Phase banner ───────────────────────────────────────────────────────────
+function renderPhaseBanner() {
+  const phase = PLAN.phases[state.currentPhase - 1];
+  const weeksEnd = parseInt(phase.weeks.split('–')[1]);
+  const week = Math.min(Math.floor(state.sessionCount / 2) + 1, weeksEnd);
+
+  document.getElementById('phase-label').textContent =
+    `Phase ${phase.number} · Woche ${week}`;
+  document.getElementById('phase-badge').textContent =
+    `${state.sessionCount}/${phase.totalSessions} Sessions`;
+
+  const pct = Math.min((state.sessionCount / phase.totalSessions) * 100, 100);
+  document.getElementById('progress-fill').style.width = `${pct}%`;
 }
 
 // ── Stubs (replaced in subsequent steps) ──────────────────────────────────
 function renderWorkout() {}
 function renderPlanReference() {}
 function checkPhaseTransition() {}
-async function renderPartnerCard() {}
+async function renderPartnerCard() {
+  document.getElementById('partner-card').innerHTML = '<p class="no-data-text">Lade...</p>';
+}
 function renderPartnerCardFromSession() {}
 function retryPendingSessions() {}
 
