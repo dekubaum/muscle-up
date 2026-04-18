@@ -1,9 +1,9 @@
 // js/db.js
 window.DB = (() => {
-  const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-  const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+  const SUPABASE_URL = 'https://bfwianyhjntvfklqczkd.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJmd2lhbnloam50dmZrbHFjemtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0NTQxNzQsImV4cCI6MjA5MjAzMDE3NH0.pWh1165Oz62cHma_e0Fly17j5BPAYcJTSnC7Q_Lj_xk';
 
-  if (SUPABASE_URL === 'YOUR_SUPABASE_URL') {
+  if (SUPABASE_URL === 'YOUR_SUPABASE_URL' || SUPABASE_ANON_KEY === 'YOUR_SUPABASE_ANON_KEY') {
     throw new Error('js/db.js: Replace SUPABASE_URL and SUPABASE_ANON_KEY before running.');
   }
 
@@ -39,7 +39,16 @@ window.DB = (() => {
         phase,
         session_date: sessionDate || new Date().toISOString().split('T')[0],
         exercises,
-      });
+      })
+      .select('id')
+      .single();
+  }
+
+  async function deleteSession(id) {
+    return client
+      .from('sessions')
+      .delete()
+      .eq('id', id);
   }
 
   async function getLatestPartnerSession(partnerName) {
@@ -52,5 +61,5 @@ window.DB = (() => {
       .maybeSingle();
   }
 
-  return { client, getProfile, upsertProfile, getSessionCount, saveSession, getLatestPartnerSession };
+  return { client, getProfile, upsertProfile, getSessionCount, saveSession, deleteSession, getLatestPartnerSession };
 })();

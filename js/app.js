@@ -8,6 +8,7 @@ const state = {
   sessionCount: 0,      // sessions completed in current phase
   checkedSets: new Set(), // 'exerciseId-setIndex' strings
   isOnline: navigator.onLine,
+  lastSession: null,    // { localId, supabaseId, exercises, phase }
 };
 
 // ── LocalStorage helpers ───────────────────────────────────────────────────
@@ -89,6 +90,7 @@ function renderPhaseBanner() {
 
 // ── Workout rendering ──────────────────────────────────────────────────────
 function renderWorkout() {
+  hidePostSessionBar();
   const phase = PLAN.phases[state.currentPhase - 1];
   const list = document.getElementById('exercise-list');
   list.innerHTML = '';
@@ -113,6 +115,7 @@ function renderWorkout() {
       cb.type = 'checkbox';
       cb.id = setId;
       cb.addEventListener('change', () => {
+        hidePostSessionBar();
         if (cb.checked) state.checkedSets.add(setId);
         else state.checkedSets.delete(setId);
         updateCompleteButton(phase);
@@ -156,7 +159,7 @@ async function completeSession() {
   lsSet('mu_pending_sessions', pending);
 
   // Attempt Supabase write
-  const { error } = await DB.saveSession(
+  const { data, error } = await DB.saveSession(
     sessionRecord.user_name,
     sessionRecord.phase,
     sessionRecord.exercises
@@ -168,9 +171,87 @@ async function completeSession() {
     lsSet('mu_pending_sessions', updated);
   }
 
+  state.lastSession = {
+    localId: sessionRecord.id,
+    supabaseId: data?.id ?? null,
+    exercises,
+    phase: state.currentPhase,
+  };
+
   state.sessionCount++;
   renderPhaseBanner();
   renderWorkout();
+  checkPhaseTransition();
+  showPostSessionBar();
+}
+
+// ── Post-session bar ───────────────────────────────────────────────────────
+function showPostSessionBar() {
+  document.getElementById('post-session-bar').classList.remove('hidden');
+  document.getElementById('btn-undo-session').onclick = undoLastSession;
+  document.getElementById('btn-repeat-session').onclick = repeatLastSession;
+}
+
+function hidePostSessionBar() {
+  document.getElementById('post-session-bar').classList.add('hidden');
+}
+
+async function undoLastSession() {
+  if (!state.lastSession) return;
+
+  const { localId, supabaseId } = state.lastSession;
+
+  const updated = (lsGet('mu_pending_sessions') || []).filter(s => s.id !== localId);
+  lsSet('mu_pending_sessions', updated);
+
+  if (supabaseId) {
+    await DB.deleteSession(supabaseId);
+  }
+
+  state.sessionCount--;
+  state.lastSession = null;
+  hidePostSessionBar();
+  renderPhaseBanner();
+  renderWorkout();
+  checkPhaseTransition();
+}
+
+async function repeatLastSession() {
+  if (!state.lastSession) return;
+
+  const { exercises } = state.lastSession;
+  const sessionRecord = {
+    id: Date.now(),
+    user_name: state.userName,
+    phase: state.currentPhase,
+    session_date: new Date().toISOString().split('T')[0],
+    exercises,
+  };
+
+  const pending = lsGet('mu_pending_sessions') || [];
+  pending.push(sessionRecord);
+  lsSet('mu_pending_sessions', pending);
+
+  const { data, error } = await DB.saveSession(
+    sessionRecord.user_name,
+    sessionRecord.phase,
+    sessionRecord.exercises
+  );
+
+  if (!error) {
+    const updated = (lsGet('mu_pending_sessions') || []).filter(s => s.id !== sessionRecord.id);
+    lsSet('mu_pending_sessions', updated);
+  }
+
+  state.lastSession = {
+    localId: sessionRecord.id,
+    supabaseId: data?.id ?? null,
+    exercises,
+    phase: state.currentPhase,
+  };
+
+  state.sessionCount++;
+  renderPhaseBanner();
   checkPhaseTransition();
 }
 
