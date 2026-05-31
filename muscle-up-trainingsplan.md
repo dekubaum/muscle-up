@@ -1,4 +1,4 @@
-# Schlamassel App: Trainingsplan
+# Schla-Muscle-App: Trainingsplan
 **Dennis & Clemens. 2x/Woche. 8–10 Wochen**
 
 ---
