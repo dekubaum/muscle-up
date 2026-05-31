@@ -2,8 +2,8 @@
 
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
-  userName: null,       // 'dennis' | 'clemens'
-  partnerName: null,    // the other user
+  userId: null,         // auth.users.id (uuid) of the logged-in user
+  username: null,       // display name (from profiles.username)
   currentPhase: 1,
   sessionCount: 0,      // sessions completed in current phase
   checkedSets: new Set(), // 'exerciseId-setIndex' strings
@@ -21,44 +21,106 @@ function lsSet(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+// ── Misc helpers ───────────────────────────────────────────────────────────
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 // ── Screen management ──────────────────────────────────────────────────────
 function showScreen(id) {
-  document.querySelectorAll('#screen-profile, #screen-main')
+  document.querySelectorAll('#screen-auth, #screen-main')
     .forEach(s => s.classList.add('hidden'));
   document.getElementById(id).classList.remove('hidden');
 }
 
-// ── Profile selection ──────────────────────────────────────────────────────
-function initProfileSelection() {
-  document.querySelectorAll('.btn-profile').forEach(btn => {
-    btn.addEventListener('click', () => {
-      lsSet('mu_user', btn.dataset.user);
-      loadMainScreen(btn.dataset.user).catch(err => console.error('loadMainScreen failed:', err));
-    });
+// ── Auth screen ────────────────────────────────────────────────────────────
+let authMode = 'login'; // 'login' | 'signup'
+
+function initAuthScreen() {
+  document.getElementById('auth-form').addEventListener('submit', onAuthSubmit);
+  document.getElementById('auth-toggle').addEventListener('click', (e) => {
+    e.preventDefault();
+    authMode = authMode === 'login' ? 'signup' : 'login';
+    renderAuthMode();
   });
+  renderAuthMode();
+}
+
+function renderAuthMode() {
+  const signup = authMode === 'signup';
+  document.getElementById('auth-title').textContent = signup ? 'Konto erstellen' : 'Anmelden';
+  document.getElementById('auth-submit').textContent = signup ? 'Registrieren' : 'Einloggen';
+  document.getElementById('auth-toggle').textContent =
+    signup ? 'Schon ein Konto? Einloggen' : 'Neu hier? Konto erstellen';
+  setAuthError('');
+}
+
+function setAuthError(msg) {
+  document.getElementById('auth-error').textContent = msg || '';
+}
+
+async function onAuthSubmit(e) {
+  e.preventDefault();
+  setAuthError('');
+  const username = document.getElementById('auth-username').value;
+  const password = document.getElementById('auth-password').value;
+  const submit = document.getElementById('auth-submit');
+  submit.disabled = true;
+
+  const { error } = authMode === 'signup'
+    ? await Auth.signUp(username, password)
+    : await Auth.signIn(username, password);
+
+  submit.disabled = false;
+  if (error) {
+    setAuthError(error);
+    return;
+  }
+  // Success: the onChange(SIGNED_IN) handler routes to the main screen.
+}
+
+// ── Auth state routing ─────────────────────────────────────────────────────
+function handleSignedOut() {
+  state.userId = null;
+  state.username = null;
+  state.sessionCount = 0;
+  state.lastSession = null;
+  Sync.unsubscribe();
+  showScreen('screen-auth');
+  const u = document.getElementById('auth-username');
+  const p = document.getElementById('auth-password');
+  if (u) u.value = '';
+  if (p) p.value = '';
+  setAuthError('');
 }
 
 // ── Main screen loader ─────────────────────────────────────────────────────
-async function loadMainScreen(userName) {
-  state.userName = userName;
-  state.partnerName = userName === 'dennis' ? 'clemens' : 'dennis';
+async function loadMainScreen(userId) {
+  state.userId = userId;
   showScreen('screen-main');
 
   // Unsubscribe any previous real-time subscription before re-subscribing
   Sync.unsubscribe();
 
   // Load phase from localStorage immediately (instant render), then sync
-  state.currentPhase = lsGet(`mu_phase_${userName}`) || 1;
+  state.currentPhase = lsGet(`mu_phase_${userId}`) || 1;
 
-  const { data: profile } = await DB.getProfile(userName);
+  const { data: profile } = await DB.getProfile(userId);
   if (profile) {
+    state.username = profile.username;
     state.currentPhase = profile.current_phase;
-    lsSet(`mu_phase_${userName}`, profile.current_phase);
+    lsSet(`mu_phase_${userId}`, profile.current_phase);
   } else {
-    await DB.upsertProfile(userName, state.currentPhase);
+    // Defensive: profile row missing (e.g. interrupted signup). Recreate it
+    // from the auth session's stored username.
+    const session = await Auth.getSession();
+    state.username = session?.user?.user_metadata?.username || 'Unbekannt';
+    await DB.upsertProfile(userId, state.currentPhase, state.username);
   }
+  renderHeader();
 
-  const { count } = await DB.getSessionCount(userName, state.currentPhase);
+  const { count } = await DB.getSessionCount(userId, state.currentPhase);
   state.sessionCount = count || 0;
 
   renderPhaseBanner();
@@ -66,10 +128,23 @@ async function loadMainScreen(userName) {
   renderPlanReference();
   checkPhaseTransition();
 
-  await renderPartnerCard();
+  await renderLeaderboard();
   retryPendingSessions();
 
-  Sync.subscribeToPartner(state.partnerName, renderPartnerCardFromSession);
+  // Subscribe only now — after the session (and its JWT) is confirmed.
+  Sync.subscribeToSessions(() => renderLeaderboard());
+}
+
+// ── Header (username + logout) ─────────────────────────────────────────────
+function renderHeader() {
+  const el = document.getElementById('current-username');
+  if (el) el.textContent = state.username || '';
+}
+
+function initLogout() {
+  document.getElementById('btn-logout').addEventListener('click', async () => {
+    await Auth.signOut(); // onChange(SIGNED_OUT) does the teardown
+  });
 }
 
 // ── Phase banner ───────────────────────────────────────────────────────────
@@ -147,7 +222,7 @@ async function completeSession() {
   const exercises = Array.from(state.checkedSets);
   const sessionRecord = {
     id: Date.now(),
-    user_name: state.userName,
+    user_id: state.userId,
     phase: state.currentPhase,
     session_date: new Date().toISOString().split('T')[0],
     exercises,
@@ -160,7 +235,7 @@ async function completeSession() {
 
   // Attempt Supabase write
   const { data, error } = await DB.saveSession(
-    sessionRecord.user_name,
+    sessionRecord.user_id,
     sessionRecord.phase,
     sessionRecord.exercises
   );
@@ -182,6 +257,7 @@ async function completeSession() {
   renderPhaseBanner();
   renderWorkout();
   checkPhaseTransition();
+  renderLeaderboard();
   showPostSessionBar();
 }
 
@@ -214,6 +290,7 @@ async function undoLastSession() {
   renderPhaseBanner();
   renderWorkout();
   checkPhaseTransition();
+  renderLeaderboard();
 }
 
 async function repeatLastSession() {
@@ -222,7 +299,7 @@ async function repeatLastSession() {
   const { exercises } = state.lastSession;
   const sessionRecord = {
     id: Date.now(),
-    user_name: state.userName,
+    user_id: state.userId,
     phase: state.currentPhase,
     session_date: new Date().toISOString().split('T')[0],
     exercises,
@@ -233,7 +310,7 @@ async function repeatLastSession() {
   lsSet('mu_pending_sessions', pending);
 
   const { data, error } = await DB.saveSession(
-    sessionRecord.user_name,
+    sessionRecord.user_id,
     sessionRecord.phase,
     sessionRecord.exercises
   );
@@ -253,62 +330,57 @@ async function repeatLastSession() {
   state.sessionCount++;
   renderPhaseBanner();
   checkPhaseTransition();
+  renderLeaderboard();
 }
 
-// ── Partner card ───────────────────────────────────────────────────────────
-async function renderPartnerCard() {
-  const card = document.getElementById('partner-card');
+// ── Leaderboard ────────────────────────────────────────────────────────────
+async function renderLeaderboard() {
+  if (!state.userId) return;
+  const container = document.getElementById('leaderboard');
 
   if (!state.isOnline) {
-    card.innerHTML = '<p class="offline-text">Offline</p>';
+    container.innerHTML = '<p class="offline-text">Offline</p>';
     return;
   }
 
-  let session = null;
+  let profiles, sessions;
   try {
-    const result = await DB.getLatestPartnerSession(state.partnerName);
-    session = result.data;
+    const [pRes, sRes] = await Promise.all([DB.getAllProfiles(), DB.getAllSessions()]);
+    if (pRes.error || sRes.error) throw (pRes.error || sRes.error);
+    profiles = pRes.data || [];
+    sessions = sRes.data || [];
   } catch (e) {
-    card.innerHTML = '<p class="offline-text">Offline</p>';
+    container.innerHTML = '<p class="offline-text">Offline</p>';
     return;
   }
 
-  if (!session) {
-    const name = state.partnerName === 'dennis' ? 'Dennis' : 'Clemens';
-    card.innerHTML = `<p class="no-data-text">${name} hat noch keine Session.</p>`;
+  if (!profiles.length) {
+    container.innerHTML = '<p class="no-data-text">Noch keine Nutzer.</p>';
     return;
   }
 
-  renderPartnerCardFromSession(session);
-}
+  // Rank: furthest in the program first — current phase, then sessions in it.
+  const ranked = profiles.map(p => {
+    const inPhase = sessions.filter(s => s.user_id === p.user_id && s.phase === p.current_phase).length;
+    const total = PLAN.phases[p.current_phase - 1].totalSessions;
+    return { user_id: p.user_id, username: p.username, phase: p.current_phase, inPhase, total };
+  }).sort((a, b) => b.phase - a.phase || b.inPhase - a.inPhase);
 
-function renderPartnerCardFromSession(session) {
-  const name = session.user_name === 'dennis' ? 'Dennis' : 'Clemens';
-  const elapsed = timeAgo(session.created_at);
-  const phaseData = PLAN.phases[session.phase - 1];
-  let exerciseText = '';
-  if (phaseData && Array.isArray(session.exercises)) {
-    const covered = phaseData.exercises.filter(ex =>
-      session.exercises.some(id => id.startsWith(ex.id + '-'))
-    ).length;
-    exerciseText = `${covered}/${phaseData.exercises.length} Übungen · `;
-  }
-  document.getElementById('partner-card').innerHTML = `
-    <div class="partner-info">
-      <span class="partner-name">${name}</span>
-      <span class="partner-phase-badge">Phase ${session.phase}</span>
-    </div>
-    <div class="partner-detail">${exerciseText}${elapsed}</div>
-  `;
-}
-
-// ── Time helper ────────────────────────────────────────────────────────────
-function timeAgo(isoString) {
-  const secs = Math.floor((Date.now() - new Date(isoString)) / 1000);
-  if (secs < 60) return 'gerade eben';
-  if (secs < 3600) return `vor ${Math.floor(secs / 60)} Min.`;
-  if (secs < 86400) return `vor ${Math.floor(secs / 3600)} Std.`;
-  return `vor ${Math.floor(secs / 86400)} Tagen`;
+  container.innerHTML = ranked.map((u, i) => {
+    const pct = Math.min((u.inPhase / u.total) * 100, 100);
+    const isMe = u.user_id === state.userId;
+    return `
+      <div class="leaderboard-row${isMe ? ' is-me' : ''}">
+        <span class="lb-rank">${i + 1}</span>
+        <div class="lb-main">
+          <div class="lb-top">
+            <span class="lb-name">${escapeHtml(u.username)}</span>
+            <span class="lb-phase-badge">Phase ${u.phase} · ${u.inPhase}/${u.total}</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+        </div>
+      </div>`;
+  }).join('');
 }
 
 // ── Plan reference ─────────────────────────────────────────────────────────
@@ -352,8 +424,8 @@ function checkPhaseTransition() {
     return;
   }
 
-  // Check if user already dismissed this transition
-  const dismissKey = `mu_phase${state.currentPhase}_transition_dismissed`;
+  // Check if user already dismissed this transition (per user)
+  const dismissKey = `mu_phase${state.currentPhase}_transition_dismissed_${state.userId}`;
   if (lsGet(dismissKey)) {
     banner.classList.add('hidden');
     return;
@@ -411,9 +483,9 @@ async function advancePhase() {
   state.currentPhase++;
   state.sessionCount = 0;
 
-  lsSet(`mu_phase_${state.userName}`, state.currentPhase);
+  lsSet(`mu_phase_${state.userId}`, state.currentPhase);
   try {
-    await DB.upsertProfile(state.userName, state.currentPhase);
+    await DB.upsertProfile(state.userId, state.currentPhase);
   } catch (e) {
     console.warn('Phase sync to Supabase failed, will retry on next load:', e);
   }
@@ -422,24 +494,37 @@ async function advancePhase() {
   renderPhaseBanner();
   renderWorkout();
   renderPlanReference();
+  renderLeaderboard();
 }
 
 // ── Offline / pending session retry ────────────────────────────────────────
 async function retryPendingSessions() {
+  if (!state.userId) return;
   const pending = lsGet('mu_pending_sessions') || [];
   if (!pending.length) return;
 
   const remaining = [];
   for (const session of pending) {
+    let userId = session.user_id;
+    if (!userId) {
+      // Legacy entry from the old (user_name) app: adopt only if it's clearly
+      // the same person on this device, otherwise drop it to avoid misattribution.
+      if (session.user_name && Auth.slug(state.username) === Auth.slug(session.user_name)) {
+        userId = state.userId;
+      } else {
+        continue;
+      }
+    }
     const { error } = await DB.saveSession(
-      session.user_name,
+      userId,
       session.phase,
       session.exercises,
       session.session_date
     );
-    if (error) remaining.push(session);
+    if (error) remaining.push({ ...session, user_id: userId });
   }
   lsSet('mu_pending_sessions', remaining);
+  renderLeaderboard();
 }
 
 // ── Network listeners (registered once) ───────────────────────────────────
@@ -447,23 +532,52 @@ function initNetworkListeners() {
   window.addEventListener('online', () => {
     state.isOnline = true;
     retryPendingSessions();
-    renderPartnerCard();
+    renderLeaderboard();
   });
   window.addEventListener('offline', () => {
     state.isOnline = false;
-    document.getElementById('partner-card').innerHTML =
-      '<p class="offline-text">Offline</p>';
+    const lb = document.getElementById('leaderboard');
+    if (lb) lb.innerHTML = '<p class="offline-text">Offline</p>';
   });
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  initProfileSelection();
+document.addEventListener('DOMContentLoaded', async () => {
+  initAuthScreen();
   initNetworkListeners();
-  const savedUser = lsGet('mu_user');
-  if (savedUser) {
-    loadMainScreen(savedUser).catch(err => console.error('loadMainScreen failed:', err));
-  } else {
-    showScreen('screen-profile');
+  initLogout();
+
+  // Subsequent auth transitions: login (SIGNED_IN), logout (SIGNED_OUT), token
+  // refresh. INITIAL_SESSION is ignored here — the explicit getSession() below
+  // owns the first route, so a blank screen never depends on the SDK's initial
+  // emission. Heavy work is deferred out of the callback (calling Supabase
+  // inside onAuthStateChange can deadlock).
+  Auth.onChange((event, session) => {
+    if (event === 'INITIAL_SESSION') return;
+    if (!session) {
+      handleSignedOut();
+      return;
+    }
+    const uid = session.user.id;
+    if (uid === state.userId) return; // ignore token refreshes for the same user
+    state.userId = uid;
+    setTimeout(() => {
+      loadMainScreen(uid).catch(err => console.error('loadMainScreen failed:', err));
+    }, 0);
+  });
+
+  // First route, straight from the persisted session (reads localStorage; works
+  // offline). Show the auth screen on any failure rather than leaving it blank.
+  try {
+    const session = await Auth.getSession();
+    if (session) {
+      state.userId = session.user.id;
+      await loadMainScreen(session.user.id);
+    } else {
+      handleSignedOut();
+    }
+  } catch (err) {
+    console.error('Initial session check failed:', err);
+    handleSignedOut();
   }
 });

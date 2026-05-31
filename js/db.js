@@ -7,35 +7,42 @@ window.DB = (() => {
     throw new Error('js/db.js: Replace SUPABASE_URL and SUPABASE_ANON_KEY before running.');
   }
 
-  const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  // persistSession keeps the user logged in across reloads (stored in localStorage,
+  // readable offline); autoRefreshToken keeps the JWT fresh. Explicit even though
+  // these are the SDK defaults — guards against a future vendored-bundle swap.
+  const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+  });
 
-  async function getProfile(userName) {
+  async function getProfile(userId) {
     return client
       .from('profiles')
       .select('*')
-      .eq('user_name', userName)
+      .eq('user_id', userId)
       .maybeSingle();
   }
 
-  async function upsertProfile(userName, phase) {
+  async function upsertProfile(userId, phase, username) {
+    const row = { user_id: userId, current_phase: phase };
+    if (username) row.username = username;
     return client
       .from('profiles')
-      .upsert({ user_name: userName, current_phase: phase }, { onConflict: 'user_name' });
+      .upsert(row, { onConflict: 'user_id' });
   }
 
-  async function getSessionCount(userName, phase) {
+  async function getSessionCount(userId, phase) {
     return client
       .from('sessions')
       .select('id', { count: 'exact', head: true })
-      .eq('user_name', userName)
+      .eq('user_id', userId)
       .eq('phase', phase);
   }
 
-  async function saveSession(userName, phase, exercises, sessionDate) {
+  async function saveSession(userId, phase, exercises, sessionDate) {
     return client
       .from('sessions')
       .insert({
-        user_name: userName,
+        user_id: userId,
         phase,
         session_date: sessionDate || new Date().toISOString().split('T')[0],
         exercises,
@@ -51,15 +58,18 @@ window.DB = (() => {
       .eq('id', id);
   }
 
-  async function getLatestPartnerSession(partnerName) {
+  // Leaderboard reads — tiny data, so fetch all and aggregate client-side.
+  async function getAllProfiles() {
     return client
-      .from('sessions')
-      .select('*')
-      .eq('user_name', partnerName)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .from('profiles')
+      .select('user_id, username, current_phase');
   }
 
-  return { client, getProfile, upsertProfile, getSessionCount, saveSession, deleteSession, getLatestPartnerSession };
+  async function getAllSessions() {
+    return client
+      .from('sessions')
+      .select('user_id, phase');
+  }
+
+  return { client, getProfile, upsertProfile, getSessionCount, saveSession, deleteSession, getAllProfiles, getAllSessions };
 })();
