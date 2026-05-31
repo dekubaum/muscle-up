@@ -29,7 +29,7 @@ function escapeHtml(str) {
 
 // ── Screen management ──────────────────────────────────────────────────────
 function showScreen(id) {
-  document.querySelectorAll('#screen-auth, #screen-main')
+  document.querySelectorAll('#screen-auth, #screen-app')
     .forEach(s => s.classList.add('hidden'));
   document.getElementById(id).classList.remove('hidden');
 }
@@ -87,6 +87,7 @@ function handleSignedOut() {
   state.sessionCount = 0;
   state.lastSession = null;
   Sync.unsubscribe();
+  closeMenu();
   showScreen('screen-auth');
   const u = document.getElementById('auth-username');
   const p = document.getElementById('auth-password');
@@ -98,7 +99,7 @@ function handleSignedOut() {
 // ── Main screen loader ─────────────────────────────────────────────────────
 async function loadMainScreen(userId) {
   state.userId = userId;
-  showScreen('screen-main');
+  showScreen('screen-app');
 
   // Unsubscribe any previous real-time subscription before re-subscribing
   Sync.unsubscribe();
@@ -131,13 +132,16 @@ async function loadMainScreen(userId) {
   await renderLeaderboard();
   retryPendingSessions();
 
+  // Land on the default page (sets title + active nav state + entrance anim).
+  navigate('page-today');
+
   // Subscribe only now — after the session (and its JWT) is confirmed.
   Sync.subscribeToSessions(() => renderLeaderboard());
 }
 
-// ── Header (username + logout) ─────────────────────────────────────────────
+// ── Header (username in the menu) ──────────────────────────────────────────
 function renderHeader() {
-  const el = document.getElementById('current-username');
+  const el = document.getElementById('nav-username');
   if (el) el.textContent = state.username || '';
 }
 
@@ -145,6 +149,59 @@ function initLogout() {
   document.getElementById('btn-logout').addEventListener('click', async () => {
     await Auth.signOut(); // onChange(SIGNED_OUT) does the teardown
   });
+}
+
+// ── Navigation: pages + hamburger menu ─────────────────────────────────────
+const PAGE_TITLES = {
+  'page-today': 'Heutige Einheit',
+  'page-leaderboard': 'Rangliste',
+  'page-plan': 'Trainingsplan',
+};
+
+function navigate(pageId) {
+  document.querySelectorAll('.page').forEach(p =>
+    p.classList.toggle('hidden', p.id !== pageId));
+  document.querySelectorAll('.nav-item[data-page]').forEach(item =>
+    item.classList.toggle('active', item.dataset.page === pageId));
+
+  const title = document.getElementById('page-title');
+  if (title) title.textContent = PAGE_TITLES[pageId] || '';
+
+  closeMenu();
+  window.scrollTo(0, 0);
+
+  // Keep the leaderboard fresh whenever it's opened.
+  if (pageId === 'page-leaderboard') renderLeaderboard();
+}
+
+function openMenu() {
+  document.getElementById('nav-menu').classList.add('open');
+  document.getElementById('nav-scrim').classList.add('open');
+  document.getElementById('btn-menu').classList.add('open');
+  document.getElementById('btn-menu').setAttribute('aria-expanded', 'true');
+  document.getElementById('nav-menu').setAttribute('aria-hidden', 'false');
+  document.body.classList.add('nav-open');
+}
+
+function closeMenu() {
+  const menu = document.getElementById('nav-menu');
+  if (!menu) return;
+  menu.classList.remove('open');
+  menu.setAttribute('aria-hidden', 'true');
+  document.getElementById('nav-scrim').classList.remove('open');
+  const btn = document.getElementById('btn-menu');
+  btn.classList.remove('open');
+  btn.setAttribute('aria-expanded', 'false');
+  document.body.classList.remove('nav-open');
+}
+
+function initNav() {
+  document.getElementById('btn-menu').addEventListener('click', () => {
+    document.getElementById('nav-menu').classList.contains('open') ? closeMenu() : openMenu();
+  });
+  document.getElementById('nav-scrim').addEventListener('click', closeMenu);
+  document.querySelectorAll('.nav-item[data-page]').forEach(item =>
+    item.addEventListener('click', () => navigate(item.dataset.page)));
 }
 
 // ── Phase banner ───────────────────────────────────────────────────────────
@@ -546,6 +603,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initAuthScreen();
   initNetworkListeners();
   initLogout();
+  initNav();
 
   // Subsequent auth transitions: login (SIGNED_IN), logout (SIGNED_OUT), token
   // refresh. INITIAL_SESSION is ignored here — the explicit getSession() below

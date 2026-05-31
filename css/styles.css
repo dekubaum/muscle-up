@@ -30,6 +30,9 @@
   --radius-card: 16px;
   --radius-btn: 12px;
 
+  /* Layout */
+  --topbar-h: 56px;
+
   /* Motion */
   --ease: cubic-bezier(0.2, 0, 0, 1);
 }
@@ -52,25 +55,22 @@ body {
 
 .hidden { display: none !important; }
 
-/* Subtle, one-time staggered entrance for the main screen's sections.
-   These wrappers persist across re-renders, so it plays once on reveal. */
+/* Staggered entrance, replayed each time a page becomes visible. */
 @keyframes fade-up {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-#screen-main:not(.hidden) > * {
+.page:not(.hidden) > * {
   animation: fade-up 0.4s var(--ease) both;
 }
-#screen-main:not(.hidden) > *:nth-child(1) { animation-delay: 0.04s; }
-#screen-main:not(.hidden) > *:nth-child(2) { animation-delay: 0.10s; }
-#screen-main:not(.hidden) > *:nth-child(3) { animation-delay: 0.16s; }
-#screen-main:not(.hidden) > *:nth-child(4) { animation-delay: 0.22s; }
-#screen-main:not(.hidden) > *:nth-child(5) { animation-delay: 0.28s; }
-#screen-main:not(.hidden) > *:nth-child(6) { animation-delay: 0.34s; }
+.page:not(.hidden) > *:nth-child(1) { animation-delay: 0.04s; }
+.page:not(.hidden) > *:nth-child(2) { animation-delay: 0.10s; }
+.page:not(.hidden) > *:nth-child(3) { animation-delay: 0.16s; }
+.page:not(.hidden) > *:nth-child(4) { animation-delay: 0.22s; }
 
 @media (prefers-reduced-motion: reduce) {
-  #screen-main:not(.hidden) > * { animation: none; }
+  .page:not(.hidden) > * { animation: none; }
   * { transition: none !important; }
 }
 
@@ -170,27 +170,137 @@ body {
 }
 .auth-toggle:hover { color: var(--accent); }
 
-/* ── App Header (username + logout) ── */
-.app-header {
+/* ── Top bar ── */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 60;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 16px;
+  height: var(--topbar-h);
+  margin: 0 -16px;            /* bleed over the body's 16px gutter */
+  padding: 0 16px;
+  background: var(--bg);
+  box-shadow: 0 1px 0 rgba(16, 24, 40, 0.06);
 }
 
-.app-username { font-weight: 700; font-size: 1rem; }
+.topbar-title {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.2px;
+  text-wrap: balance;
+}
 
-.btn-logout {
+.btn-menu {
+  position: relative;
+  width: 44px;               /* ≥40px hit area */
+  height: 44px;
+  margin-right: -8px;        /* optical: nudge icon toward the edge */
+  flex-shrink: 0;
   background: none;
   border: none;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  font-weight: 600;
+  color: var(--text);
   cursor: pointer;
-  padding: 4px 0;
+  border-radius: var(--radius-btn);
+  transition-property: background-color, transform;
+  transition-duration: 0.15s;
+  transition-timing-function: var(--ease);
 }
-.btn-logout:hover { color: var(--accent); }
+.btn-menu:hover { background: var(--surface2); }
+.btn-menu:active { transform: scale(0.92); }
+
+/* ☰ ⇄ ✕ cross-fade (both glyphs stay in the DOM) */
+.menu-icon {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 1.3rem;
+  transition-property: opacity, transform, filter;
+  transition-duration: 0.25s;
+  transition-timing-function: var(--ease);
+}
+.menu-icon-open  { opacity: 1; transform: scale(1);    filter: blur(0); }
+.menu-icon-close { opacity: 0; transform: scale(0.25); filter: blur(4px); }
+.btn-menu.open .menu-icon-open  { opacity: 0; transform: scale(0.25); filter: blur(4px); }
+.btn-menu.open .menu-icon-close { opacity: 1; transform: scale(1);    filter: blur(0); }
+
+/* ── Navigation panel + scrim ── */
+.nav-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(16, 24, 40, 0.32);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s var(--ease);
+}
+.nav-scrim.open { opacity: 1; pointer-events: auto; }
+
+.nav-menu {
+  position: fixed;
+  top: var(--topbar-h);
+  left: 50%;
+  z-index: 50;
+  width: 100%;
+  max-width: 480px;
+  padding: 8px;
+  background: var(--surface);
+  border-radius: 0 0 var(--radius-card) var(--radius-card);
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(-10px);
+  transition-property: opacity, transform;
+  transition-duration: 0.22s;
+  transition-timing-function: var(--ease);
+}
+.nav-menu.open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+.nav-username {
+  padding: 8px 12px 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+.nav-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 13px 12px;
+  background: none;
+  border: none;
+  border-radius: 8px;        /* concentric: 16px card − 8px padding */
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition-property: background-color, color, transform;
+  transition-duration: 0.13s;
+  transition-timing-function: var(--ease);
+}
+.nav-item:hover { background: var(--surface2); }
+.nav-item:active { transform: scale(0.98); }
+.nav-item.active { color: var(--accent); background: var(--accent-soft); }
+
+.nav-logout {
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 8px 8px;
+  color: var(--text-muted);
+}
+.nav-logout:hover { background: var(--surface2); color: var(--accent); }
+
+body.nav-open { overflow: hidden; }
 
 /* ── Phase Banner ── */
 .phase-banner {

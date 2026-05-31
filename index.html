@@ -27,60 +27,77 @@
     </div>
   </div>
 
-  <!-- ── Main Screen ── -->
-  <div id="screen-main" class="hidden">
+  <!-- ── App Screen ── -->
+  <div id="screen-app" class="hidden">
 
-    <!-- Header: current user + logout -->
-    <div id="app-header" class="app-header">
-      <span id="current-username" class="app-username"></span>
-      <button id="btn-logout" class="btn-logout">Abmelden</button>
-    </div>
+    <!-- Top bar: page title + hamburger -->
+    <header class="topbar">
+      <span id="page-title" class="topbar-title">Heutige Einheit</span>
+      <button id="btn-menu" class="btn-menu" aria-label="Menü" aria-expanded="false" aria-controls="nav-menu">
+        <span class="menu-icon menu-icon-open" aria-hidden="true">☰</span>
+        <span class="menu-icon menu-icon-close" aria-hidden="true">✕</span>
+      </button>
+    </header>
 
-    <!-- Phase Banner -->
-    <div id="phase-banner" class="phase-banner">
-      <div class="phase-info">
-        <span id="phase-label" class="phase-label"></span>
-        <span id="phase-badge" class="phase-badge"></span>
-      </div>
-      <div class="progress-bar">
-        <div id="progress-fill" class="progress-fill"></div>
-      </div>
-    </div>
+    <!-- Dim overlay + slide-down navigation panel -->
+    <div id="nav-scrim" class="nav-scrim"></div>
+    <nav id="nav-menu" class="nav-menu" aria-hidden="true">
+      <div id="nav-username" class="nav-username"></div>
+      <button class="nav-item" data-page="page-today">Heutige Einheit</button>
+      <button class="nav-item" data-page="page-leaderboard">Rangliste</button>
+      <button class="nav-item" data-page="page-plan">Trainingsplan</button>
+      <button id="btn-logout" class="nav-item nav-logout">Abmelden</button>
+    </nav>
 
-    <!-- Today's Workout -->
-    <div class="section">
-      <div class="section-title">Heutige Einheit</div>
-      <div id="exercise-list"></div>
-      <button id="btn-complete" class="btn-complete" disabled>Session abschließen</button>
-      <div id="post-session-bar" class="post-session-bar hidden">
-        <span class="post-session-msg">✓ Session gespeichert</span>
-        <div class="post-session-actions">
-          <button id="btn-undo-session" class="btn-post-action btn-undo">Rückgängig</button>
-          <button id="btn-repeat-session" class="btn-post-action btn-repeat">Wiederholen</button>
+    <main id="page-content">
+
+      <!-- Page: Heutige Einheit -->
+      <section id="page-today" class="page">
+        <div id="phase-banner" class="phase-banner">
+          <div class="phase-info">
+            <span id="phase-label" class="phase-label"></span>
+            <span id="phase-badge" class="phase-badge"></span>
+          </div>
+          <div class="progress-bar">
+            <div id="progress-fill" class="progress-fill"></div>
+          </div>
         </div>
-      </div>
-    </div>
 
-    <!-- Phase Transition Banner (hidden until triggered) -->
-    <div id="phase-transition" class="phase-transition hidden">
-      <div id="phase-transition-content"></div>
-      <button id="btn-advance-phase" class="btn-advance" disabled>Jetzt wechseln</button>
-    </div>
+        <div class="section">
+          <div id="exercise-list"></div>
+          <button id="btn-complete" class="btn-complete" disabled>Session abschließen</button>
+          <div id="post-session-bar" class="post-session-bar hidden">
+            <span class="post-session-msg">✓ Session gespeichert</span>
+            <div class="post-session-actions">
+              <button id="btn-undo-session" class="btn-post-action btn-undo">Rückgängig</button>
+              <button id="btn-repeat-session" class="btn-post-action btn-repeat">Wiederholen</button>
+            </div>
+          </div>
+        </div>
 
-    <!-- Leaderboard -->
-    <div class="section">
-      <div class="section-title">Rangliste</div>
-      <div id="leaderboard" class="leaderboard">
-        <p class="no-data-text">Lade...</p>
-      </div>
-    </div>
+        <div id="phase-transition" class="phase-transition hidden">
+          <div id="phase-transition-content"></div>
+          <button id="btn-advance-phase" class="btn-advance" disabled>Jetzt wechseln</button>
+        </div>
+      </section>
 
-    <!-- Plan Reference -->
-    <div class="section">
-      <div class="section-title">Trainingsplan</div>
-      <div id="plan-reference"></div>
-    </div>
+      <!-- Page: Rangliste -->
+      <section id="page-leaderboard" class="page hidden">
+        <div class="section">
+          <div id="leaderboard" class="leaderboard">
+            <p class="no-data-text">Lade...</p>
+          </div>
+        </div>
+      </section>
 
+      <!-- Page: Trainingsplan -->
+      <section id="page-plan" class="page hidden">
+        <div class="section">
+          <div id="plan-reference"></div>
+        </div>
+      </section>
+
+    </main>
   </div>
 
   <!-- Scripts — order matters: supabase → data → db → auth → sync → app -->
