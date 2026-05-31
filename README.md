@@ -1,2 +1,3 @@
-# muscle-up
-Unser Trainingsplan zum Muscle Up
+# Schlamassel App
+
+Unser Weg zum ersten Muscle-Up.

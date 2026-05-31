@@ -1,4 +1,4 @@
-# Muscle Up Trainingsplan
+# Schlamassel App: Trainingsplan
 **Dennis & Clemens. 2x/Woche. 8–10 Wochen**
 
 ---

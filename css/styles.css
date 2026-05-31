@@ -303,6 +303,18 @@ body {
 body.nav-open { overflow: hidden; }
 
 /* ── Phase Banner ── */
+/* ── Welcome (landing page intro) ── */
+.welcome-card { margin: 8px 0 4px; }
+
+.welcome-title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  text-wrap: balance;
+}
+
+.welcome-subtitle { color: var(--text-muted); margin-top: 4px; }
+
 .phase-banner {
   background: var(--surface);
   border-radius: var(--radius-card);
