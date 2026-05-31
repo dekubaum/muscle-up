@@ -150,7 +150,7 @@ function initLogout() {
 // ── Phase banner ───────────────────────────────────────────────────────────
 function renderPhaseBanner() {
   const phase = PLAN.phases[state.currentPhase - 1];
-  const [weeksStart, weeksEnd] = phase.weeks.split('–').map(Number);
+  const [weeksStart, weeksEnd] = phase.weeks.split('-').map(Number);
   const phaseWeekCount = weeksEnd - weeksStart + 1;
   const week = Math.min(Math.floor(state.sessionCount / 2) + 1, phaseWeekCount);
 
@@ -179,7 +179,7 @@ function renderWorkout() {
     info.className = 'exercise-info';
     info.innerHTML =
       `<div class="exercise-name">${exercise.name}</div>` +
-      `<div class="exercise-detail">${exercise.sets} × ${exercise.reps} — ${exercise.focus}</div>`;
+      `<div class="exercise-detail">${exercise.sets} × ${exercise.reps} · ${exercise.focus}</div>`;
 
     const boxes = document.createElement('div');
     boxes.className = 'exercise-checkboxes';

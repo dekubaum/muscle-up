@@ -25,7 +25,7 @@ window.Auth = (() => {
   function validate(username, password) {
     const s = slug(username);
     if (s.length < 2 || s.length > 30) {
-      return 'Name muss 2–30 Zeichen (Buchstaben/Zahlen) enthalten.';
+      return 'Name muss 2 bis 30 Zeichen (Buchstaben/Zahlen) enthalten.';
     }
     if (!password || password.length < 6) {
       return 'Passwort muss mindestens 6 Zeichen lang sein.';
