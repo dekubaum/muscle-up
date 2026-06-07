@@ -48,13 +48,19 @@ each attaches a global the next one depends on, so the order cannot be changed c
 - **[js/db.js](js/db.js)** — thin Supabase wrapper (IIFE returning async query functions).
   All database access goes through here. `createClient` enables `persistSession` (keep logged in).
 - **[js/auth.js](js/auth.js)** — username↔synthetic-email auth: `signUp`/`signIn`/`signOut`,
-  `getSession`, `onChange`, and the `slug()` that maps a username to its `@muscleup.local` email.
-- **[js/sync.js](js/sync.js)** — `subscribeToSessions`: subscribes to **all** `sessions` INSERTs
-  via Realtime to refresh the live leaderboard. Must be called only after a session exists (the
-  SDK applies the JWT to the realtime socket asynchronously).
-- **[js/app.js](js/app.js)** — everything else: one global `state` object, auth-gated two-screen
-  routing (`showScreen` over `#screen-auth`/`#screen-main`, driven by `Auth.onChange`), imperative
-  DOM rendering (`render*` functions including `renderLeaderboard`), and the session lifecycle.
+  `updatePassword`, `getSession`, `onChange`, and the `slug()`/`emailFor()` that map a username to
+  its `@muscleup.local` email.
+- **[js/sync.js](js/sync.js)** — `subscribeToSessions`/`unsubscribe`: subscribes to **all**
+  `sessions` INSERTs via Realtime to refresh the live leaderboard. Must be called only after a
+  session exists (the SDK applies the JWT to the realtime socket asynchronously); `unsubscribe`
+  tears the channel down on logout and before each re-subscribe.
+- **[js/app.js](js/app.js)** — everything else: one global `state` object, imperative DOM rendering
+  (`render*` functions), and the session lifecycle. Two layers of routing:
+  - **Auth-gated screen switch** — `showScreen` toggles `#screen-auth` vs `#screen-app`.
+  - **In-app page router** — inside `#screen-app`, `navigate(pageId)` shows one of four `.page`
+    sections (`page-today`, `page-leaderboard`, `page-plan`, `page-settings`) behind a slide-down
+    hamburger menu (`openMenu`/`closeMenu`), sets the top-bar title from `PAGE_TITLES`, and lazily
+    re-renders the leaderboard/settings pages on open.
 
 ### Key patterns
 
@@ -65,11 +71,14 @@ queue; on failure it stays. `retryPendingSessions()` flushes the queue on app lo
 workout date. Network listeners are registered once at startup (not per screen load) to avoid
 duplicate handlers.
 
-**Auth gates everything; the persisted Supabase session is the identity.** On load `app.js`
-registers `Auth.onChange`, which fires `INITIAL_SESSION` with the persisted session (or null) and
-routes to `#screen-main` or `#screen-auth`. There is no `mu_user` key anymore — identity comes from
-the session (`session.user.id`). The heavy `loadMainScreen` is deferred out of the `onChange`
-callback via `setTimeout(0)` (calling Supabase inside the callback can deadlock).
+**Auth gates everything; the persisted Supabase session is the identity.** On load `app.js` does
+the first route itself via an explicit `await Auth.getSession()` (reads localStorage, works offline),
+then routes to `#screen-app` or `#screen-auth`. `Auth.onChange` is registered for *subsequent*
+transitions only (`SIGNED_IN`/`SIGNED_OUT`/token refresh) and deliberately **ignores
+`INITIAL_SESSION`**, so a blank screen never depends on the SDK's initial emission. There is no
+`mu_user` key — identity comes from the session (`session.user.id`). Inside the `onChange` callback
+the heavy `loadMainScreen` is deferred via `setTimeout(0)` (calling Supabase inside the callback can
+deadlock), and same-user token refreshes are short-circuited (`uid === state.userId`).
 
 **localStorage is the instant-render cache; Supabase is the shared truth.** On load,
 `loadMainScreen` reads the phase from `localStorage` first for an instant render, then reconciles
@@ -80,5 +89,28 @@ with the `profiles` row. Keys: `mu_phase_<userId>`, `mu_pending_sessions` (recor
 reaches that phase's `totalSessions`, a transition banner appears. The 2→3 transition is gated
 behind ticking all `phase3Checklist` items; `advancePhase` increments the phase, resets the count,
 and writes to both `localStorage` and the `profiles` table.
+
+**Post-session undo/repeat.** After `completeSession`, a bar offers Undo/Repeat against
+`state.lastSession` (`{ localId, supabaseId, exercises, phase }`). `undoLastSession` removes the row
+from both the pending queue and Supabase (by `supabaseId`); `repeatLastSession` writes another
+session with the same exercises. Both adjust `state.sessionCount` and re-render.
+
+**Settings page (`renderSettings`).** Three independent tools, all on `page-settings`:
+- **Display name** (`onNameSubmit`) writes only `profiles.username` via `upsertProfile`. **Gotcha:**
+  this does *not* change login — the synthetic email/slug is fixed at signup, so you always log in
+  with the *original* name even after renaming. The unique-violation (`23505`) path reports
+  "name taken".
+- **Password** (`onPasswordSubmit`) calls `Auth.updatePassword` — the active session authorizes it,
+  so no current password is required.
+- **Progress reset** — `onRewind` rewinds to a chosen Phase/Week: keeps the oldest `(week-1)*2`
+  sessions of the target phase (2 sessions = 1 week), deletes the rest *and every later phase's*
+  sessions, then moves the `current_phase` pointer back. `onClearPhase` deletes just one phase's
+  sessions. Both also prune the offline queue and the per-phase `…_transition_dismissed_…` flags
+  (`pruneLocalAfterReset`) so banners re-evaluate cleanly.
+
+**Naming drift — do not "fix".** The app is branded "Schla-Muscle-App" in the UI, but internal
+identifiers were intentionally left unchanged: localStorage keys are `mu_*`, the synthetic email
+domain is `@muscleup.local`, and Supabase table/column names are unchanged. Renaming any of these is
+a data migration, not a cosmetic edit.
 
 UI language is German.
