@@ -18,7 +18,11 @@ Backend is Supabase with **real Supabase Auth** (username + password). The anon 
 [js/db.js](js/db.js) is intentional — RLS is the gate, not key secrecy. For a fresh project, run
 [supabase/schema.sql](supabase/schema.sql) once in the Supabase SQL editor; to migrate an existing
 `dennis`/`clemens` project while preserving its data, follow the ordered steps in
-[supabase/migration-auth.sql](supabase/migration-auth.sql) instead.
+[supabase/migration-auth.sql](supabase/migration-auth.sql) instead. The handstand feature adds a
+`handstand_sessions` table: it ships in `schema.sql` for fresh projects, and an existing project
+gets it by running the idempotent [supabase/migration-handstand.sql](supabase/migration-handstand.sql)
+once (safe to re-run; until it runs, handstand completions just queue offline and standings show
+"Offline").
 
 **Required manual dashboard step:** in Supabase → Authentication, **disable "Confirm email"**.
 Usernames have no real email — the app maps a username to a synthetic `<slug>@muscleup.local`
@@ -26,41 +30,53 @@ address (see [js/auth.js](js/auth.js)), which can never be confirmed. With confi
 `signUp` returns no session and login is permanently broken. (Consequence: password reset is not
 supported — admin/manual only.)
 
-Two tables, keyed by the Auth user id (`auth.users.id`); Realtime is enabled on `sessions`:
-- `sessions` — one row per completed workout (`user_id`, `phase`, `session_date`, `exercises` jsonb)
+Three tables, keyed by the Auth user id (`auth.users.id`); Realtime is enabled on `sessions` and
+`handstand_sessions`:
+- `sessions` — one row per completed muscle-up workout (`user_id`, `phase`, `session_date`,
+  `exercises` jsonb)
+- `handstand_sessions` — one row per completed handstand block (`user_id`, `block`, `session_date`,
+  `exercises` jsonb). Parallel to `sessions` but keyed by `block` text, not a phase number.
 - `profiles` — one row per user (`user_id` PK, unique `username`, `current_phase`)
 
-RLS: any logged-in user can **read all** rows (for the leaderboard) but **write only their own**
-(`auth.uid() = user_id`). `phase`/`current_phase` keep `CHECK (… BETWEEN 1 AND 3)`, so changing the
-number of phases still requires a schema migration. Usernames are unbounded (no CHECK); uniqueness
-is enforced by the synthetic-email uniqueness plus a `UNIQUE(username)` constraint.
+RLS: any logged-in user can **read all** rows (for the leaderboard/standings) but **write only their
+own** (`auth.uid() = user_id`). `phase`/`current_phase` keep `CHECK (… BETWEEN 1 AND 3)`, so changing
+the number of phases still requires a schema migration. `handstand_sessions.block` has **no CHECK** by
+design — block ids are app-defined content, so adding a block stays a code change, not a migration.
+Usernames are unbounded (no CHECK); uniqueness is enforced by the synthetic-email uniqueness plus a
+`UNIQUE(username)` constraint.
 
 ## Architecture
 
-Vanilla JS, no framework. Six scripts load in a **fixed order** (see [index.html](index.html));
+Vanilla JS, no framework. Seven scripts load in a **fixed order** (see [index.html](index.html));
 each attaches a global the next one depends on, so the order cannot be changed casually:
 
-`supabase.min.js` → `data.js` (`window.PLAN`) → `db.js` (`window.DB`) → `auth.js` (`window.Auth`) → `sync.js` (`window.Sync`) → `app.js`
+`supabase.min.js` → `data.js` (`window.PLAN`) → `handstand-data.js` (`window.HANDSTAND`) → `db.js` (`window.DB`) → `auth.js` (`window.Auth`) → `sync.js` (`window.Sync`) → `app.js`
 
-- **[js/data.js](js/data.js)** — `PLAN`: the hardcoded 3-phase program (exercises, sets/reps,
-  and `phase3Checklist`). This is the source of truth for what's displayed; no exercise data
-  lives in the database.
+- **[js/data.js](js/data.js)** — `PLAN`: the hardcoded 3-phase muscle-up program (exercises,
+  sets/reps, and `phase3Checklist`). This is the source of truth for what's displayed; no exercise
+  data lives in the database.
+- **[js/handstand-data.js](js/handstand-data.js)** — `HANDSTAND`: the hardcoded handstand program,
+  `{ blocks: [{ id, letter, name, duration, goal, exercises:[{ id, name, prescription, howto }] }] }`.
+  Five blocks (A–E); each exercise carries a German `howto` cue shown inline. Pure data, no
+  dependency on `DB`/`Auth`, so it loads right after `data.js`.
 - **[js/db.js](js/db.js)** — thin Supabase wrapper (IIFE returning async query functions).
   All database access goes through here. `createClient` enables `persistSession` (keep logged in).
 - **[js/auth.js](js/auth.js)** — username↔synthetic-email auth: `signUp`/`signIn`/`signOut`,
   `updatePassword`, `getSession`, `onChange`, and the `slug()`/`emailFor()` that map a username to
   its `@muscleup.local` email.
-- **[js/sync.js](js/sync.js)** — `subscribeToSessions`/`unsubscribe`: subscribes to **all**
-  `sessions` INSERTs via Realtime to refresh the live leaderboard. Must be called only after a
-  session exists (the SDK applies the JWT to the realtime socket asynchronously); `unsubscribe`
-  tears the channel down on logout and before each re-subscribe.
+- **[js/sync.js](js/sync.js)** — `subscribeToSessions`/`subscribeToHandstand`/`unsubscribe`:
+  subscribes to **all** INSERTs on `sessions` (live leaderboard) and `handstand_sessions` (live
+  standings) via Realtime. Must be called only after a session exists (the SDK applies the JWT to the
+  realtime socket asynchronously). Two separate channels; each `subscribe*` clears only its own, and
+  `unsubscribe` tears **both** down on logout and before each re-subscribe.
 - **[js/app.js](js/app.js)** — everything else: one global `state` object, imperative DOM rendering
   (`render*` functions), and the session lifecycle. Two layers of routing:
   - **Auth-gated screen switch** — `showScreen` toggles `#screen-auth` vs `#screen-app`.
-  - **In-app page router** — inside `#screen-app`, `navigate(pageId)` shows one of four `.page`
-    sections (`page-today`, `page-leaderboard`, `page-plan`, `page-settings`) behind a slide-down
-    hamburger menu (`openMenu`/`closeMenu`), sets the top-bar title from `PAGE_TITLES`, and lazily
-    re-renders the leaderboard/settings pages on open.
+  - **In-app page router** — inside `#screen-app`, `navigate(pageId)` shows one of five `.page`
+    sections (`page-today`, `page-handstand`, `page-leaderboard`, `page-plan`, `page-settings`) behind
+    a slide-down hamburger menu (`openMenu`/`closeMenu`), sets the top-bar title from `PAGE_TITLES`,
+    and lazily re-renders the handstand/leaderboard/settings pages on open. Nav buttons bind
+    automatically from their `data-page` attribute, so adding a page needs no JS wiring.
 
 ### Key patterns
 
@@ -94,6 +110,24 @@ and writes to both `localStorage` and the `profiles` table.
 `state.lastSession` (`{ localId, supabaseId, exercises, phase }`). `undoLastSession` removes the row
 from both the pending queue and Supabase (by `supabaseId`); `repeatLastSession` writes another
 session with the same exercises. Both adjust `state.sessionCount` and re-render.
+
+**Handstand practice (`page-handstand`).** A parallel program, not a phase progression: the user
+picks ONE block (A–E) to train today via chips, ticks the exercises they did, and completes to log a
+`handstand_sessions` row. It deliberately reuses the muscle-up machinery rather than extending it —
+its own `render*` functions (`renderHandstand` and the `renderHandstand*` helpers), its own offline
+queue, and its own realtime channel — because the data model differs (block vs. phase, one checkbox
+per exercise vs. per set). Specifics:
+- **Completion rule differs**: `updateHandstandButton` enables Complete once **≥1** exercise is
+  checked (`state.checkedHandstand.size`), since a block is a pick-what-you-did menu — unlike
+  `updateCompleteButton`, which requires every exercise covered.
+- **Offline-first** mirrors `completeSession`: queue key `mu_pending_handstand`, flushed by
+  `retryPendingHandstand()` (invoked alongside `retryPendingSessions` on load and the `online` event).
+- **State**: `handstandCount` (loaded once in `loadMainScreen`, optimistically `++`'d on complete),
+  `handstandBlock` (persisted to `mu_handstand_block_<userId>` for an instant default),
+  `checkedHandstand` (Set), `lastHandstandSession` (Undo target; no Repeat).
+- **Shared standings** (`renderHandstandStandings`) aggregate total completed sessions per user from
+  `getAllHandstandSessions` — separate from the phase-based Rangliste, rendered on the handstand page.
+- `handleSignedOut` resets the handstand state so the next user never sees the prior count.
 
 **Settings page (`renderSettings`).** Three independent tools, all on `page-settings`:
 - **Display name** (`onNameSubmit`) writes only `profiles.username` via `upsertProfile`. **Gotcha:**

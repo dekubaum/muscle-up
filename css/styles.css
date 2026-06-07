@@ -719,3 +719,78 @@ body.nav-open { overflow: hidden; }
 .btn-clear:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-clear:not(:disabled):hover { background: #dc2626; color: #fff; border-color: #dc2626; }
 .btn-clear:not(:disabled):active { transform: scale(0.97); }
+
+/* ── Handstand ── */
+/* Banner has no progress bar (no fixed total), so drop the info-row spacing. */
+#handstand-banner .phase-info { margin-bottom: 0; }
+
+/* Block selector chips */
+.hs-block-selector { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.hs-block-chip {
+  padding: 8px 14px;
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 99px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition-property: background-color, color, border-color, transform;
+  transition-duration: 0.13s;
+  transition-timing-function: var(--ease);
+}
+.hs-block-chip:hover { background: var(--surface); box-shadow: var(--shadow-sm); }
+.hs-block-chip:active { transform: scale(0.96); }
+.hs-block-chip.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Block goal line above the exercises */
+.hs-block-goal {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  text-wrap: pretty;
+}
+
+/* Exercise card — column layout so the how-to can expand below the head row. */
+.hs-exercise {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+.hs-exercise-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hs-howto-toggle {
+  margin-top: 10px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent-light);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.hs-howto-toggle:hover { color: var(--accent); }
+
+.hs-exercise-howto {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+/* Standings rows have no progress bar — remove the name-row bottom spacing. */
+#handstand-standings .lb-top { margin-bottom: 0; }

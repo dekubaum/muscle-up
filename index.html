@@ -44,6 +44,7 @@
     <nav id="nav-menu" class="nav-menu" aria-hidden="true">
       <div id="nav-username" class="nav-username"></div>
       <button class="nav-item" data-page="page-today">Heutige Einheit</button>
+      <button class="nav-item" data-page="page-handstand">Handstand</button>
       <button class="nav-item" data-page="page-leaderboard">Rangliste</button>
       <button class="nav-item" data-page="page-plan">Trainingsplan</button>
       <button class="nav-item" data-page="page-settings">Einstellungen</button>
@@ -83,6 +84,39 @@
         <div id="phase-transition" class="phase-transition hidden">
           <div id="phase-transition-content"></div>
           <button id="btn-advance-phase" class="btn-advance" disabled>Jetzt wechseln</button>
+        </div>
+      </section>
+
+      <!-- Page: Handstand -->
+      <section id="page-handstand" class="page hidden">
+        <div id="handstand-banner" class="phase-banner">
+          <div class="phase-info">
+            <span id="handstand-label" class="phase-label"></span>
+            <span id="handstand-badge" class="phase-badge"></span>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3 class="section-title">Block wählen</h3>
+          <div id="handstand-blocks" class="hs-block-selector"></div>
+        </div>
+
+        <div class="section">
+          <div id="handstand-exercise-list"></div>
+          <button id="btn-complete-handstand" class="btn-complete" disabled>Einheit abschließen</button>
+          <div id="handstand-bar" class="post-session-bar hidden">
+            <span class="post-session-msg">✓ Einheit gespeichert</span>
+            <div class="post-session-actions">
+              <button id="btn-undo-handstand" class="btn-post-action btn-undo">Rückgängig</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3 class="section-title">Handstand Rangliste</h3>
+          <div id="handstand-standings" class="leaderboard">
+            <p class="no-data-text">Lade...</p>
+          </div>
         </div>
       </section>
 
@@ -167,6 +201,7 @@
   <!-- Scripts — order matters: supabase → data → db → auth → sync → app -->
   <script src="js/vendor/supabase.min.js"></script>
   <script src="js/data.js"></script>
+  <script src="js/handstand-data.js"></script>
   <script src="js/db.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/sync.js"></script>

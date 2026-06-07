@@ -49,3 +49,29 @@ CREATE POLICY "sessions_delete_own" ON sessions
 
 -- Enable real-time on sessions (the live leaderboard listens to INSERTs).
 ALTER PUBLICATION supabase_realtime ADD TABLE sessions;
+
+-- ── Handstand practice ──────────────────────────────────────────────────────
+-- Parallel to sessions, but keyed by `block` (app-defined content, so NO CHECK
+-- constraint — adding a block must not require a schema migration).
+CREATE TABLE IF NOT EXISTS handstand_sessions (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  block         text NOT NULL,
+  session_date  date NOT NULL,
+  exercises     jsonb NOT NULL DEFAULT '[]',
+  created_at    timestamptz DEFAULT now()
+);
+
+ALTER TABLE handstand_sessions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "hs_select_all_auth" ON handstand_sessions
+  FOR SELECT TO authenticated USING (true);
+CREATE POLICY "hs_insert_own" ON handstand_sessions
+  FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "hs_update_own" ON handstand_sessions
+  FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "hs_delete_own" ON handstand_sessions
+  FOR DELETE TO authenticated USING (auth.uid() = user_id);
+
+-- Real-time so the shared handstand standings update live.
+ALTER PUBLICATION supabase_realtime ADD TABLE handstand_sessions;

@@ -9,6 +9,12 @@ const state = {
   checkedSets: new Set(), // 'exerciseId-setIndex' strings
   isOnline: navigator.onLine,
   lastSession: null,    // { localId, supabaseId, exercises, phase }
+
+  // Handstand practice (parallel program; see js/handstand-data.js)
+  handstandCount: 0,         // total completed handstand sessions (current user)
+  handstandBlock: 'a-warmup', // currently selected block id
+  checkedHandstand: new Set(), // checked exercise ids for the active block
+  lastHandstandSession: null,  // { localId, supabaseId, block, exercises }
 };
 
 // ── LocalStorage helpers ───────────────────────────────────────────────────
@@ -86,6 +92,9 @@ function handleSignedOut() {
   state.username = null;
   state.sessionCount = 0;
   state.lastSession = null;
+  state.handstandCount = 0;
+  state.lastHandstandSession = null;
+  state.checkedHandstand.clear();
   Sync.unsubscribe();
   closeMenu();
   showScreen('screen-auth');
@@ -106,6 +115,7 @@ async function loadMainScreen(userId) {
 
   // Load phase from localStorage immediately (instant render), then sync
   state.currentPhase = lsGet(`mu_phase_${userId}`) || 1;
+  state.handstandBlock = lsGet(`mu_handstand_block_${userId}`) || 'a-warmup';
 
   const { data: profile } = await DB.getProfile(userId);
   if (profile) {
@@ -124,6 +134,9 @@ async function loadMainScreen(userId) {
   const { count } = await DB.getSessionCount(userId, state.currentPhase);
   state.sessionCount = count || 0;
 
+  const { count: hsCount } = await DB.getHandstandCount(userId);
+  state.handstandCount = hsCount || 0;
+
   renderPhaseBanner();
   renderWorkout();
   renderPlanReference();
@@ -131,12 +144,14 @@ async function loadMainScreen(userId) {
 
   await renderLeaderboard();
   retryPendingSessions();
+  retryPendingHandstand();
 
   // Land on the default page (sets title + active nav state + entrance anim).
   navigate('page-today');
 
   // Subscribe only now — after the session (and its JWT) is confirmed.
   Sync.subscribeToSessions(() => renderLeaderboard());
+  Sync.subscribeToHandstand(() => renderHandstandStandings());
 }
 
 // ── Header (username in the menu) ──────────────────────────────────────────
@@ -154,6 +169,7 @@ function initLogout() {
 // ── Navigation: pages + hamburger menu ─────────────────────────────────────
 const PAGE_TITLES = {
   'page-today': 'Heutige Einheit',
+  'page-handstand': 'Handstand',
   'page-leaderboard': 'Rangliste',
   'page-plan': 'Trainingsplan',
   'page-settings': 'Einstellungen',
@@ -175,6 +191,8 @@ function navigate(pageId) {
   if (pageId === 'page-leaderboard') renderLeaderboard();
   // Rebuild the settings page (prefill name, live session counts) on open.
   if (pageId === 'page-settings') renderSettings();
+  // Build the handstand page (block selector, exercises, standings) on open.
+  if (pageId === 'page-handstand') renderHandstand();
 }
 
 function openMenu() {
@@ -587,6 +605,236 @@ async function retryPendingSessions() {
   renderLeaderboard();
 }
 
+// ── Handstand practice ──────────────────────────────────────────────────────
+// A parallel program (see js/handstand-data.js): pick ONE block to train today,
+// tick the exercises you did, complete to log a session. Reuses the offline-first
+// + realtime + standings patterns from the muscle-up side.
+function renderHandstand() {
+  renderHandstandProgress();
+  renderHandstandBlocks();
+  renderHandstandExercises();
+  renderHandstandStandings();
+}
+
+function renderHandstandProgress() {
+  const label = document.getElementById('handstand-label');
+  const badge = document.getElementById('handstand-badge');
+  if (label) label.textContent = 'Handstand-Praxis';
+  if (badge) badge.textContent =
+    `${state.handstandCount} ${state.handstandCount === 1 ? 'Einheit' : 'Einheiten'}`;
+}
+
+function renderHandstandBlocks() {
+  const container = document.getElementById('handstand-blocks');
+  if (!container) return;
+
+  container.innerHTML = HANDSTAND.blocks.map(b => {
+    const active = b.id === state.handstandBlock ? ' active' : '';
+    return `<button type="button" class="hs-block-chip${active}" data-block="${b.id}">` +
+      `${escapeHtml(b.letter)} · ${escapeHtml(b.name)}</button>`;
+  }).join('');
+
+  container.querySelectorAll('.hs-block-chip').forEach(chip =>
+    chip.addEventListener('click', () => {
+      state.handstandBlock = chip.dataset.block;
+      lsSet(`mu_handstand_block_${state.userId}`, state.handstandBlock);
+      renderHandstandBlocks();
+      renderHandstandExercises();
+    }));
+}
+
+function renderHandstandExercises() {
+  const list = document.getElementById('handstand-exercise-list');
+  if (!list) return;
+  hideHandstandBar();
+  state.checkedHandstand.clear();
+
+  const block = HANDSTAND.blocks.find(b => b.id === state.handstandBlock) || HANDSTAND.blocks[0];
+
+  const goalHtml = block.goal
+    ? `<p class="hs-block-goal">${escapeHtml(block.duration)} · Ziel: ${escapeHtml(block.goal)}</p>`
+    : '';
+
+  list.innerHTML = goalHtml + block.exercises.map(ex => {
+    const detail = ex.prescription
+      ? `<div class="exercise-detail">${escapeHtml(ex.prescription)}</div>` : '';
+    const howto = ex.howto
+      ? `<button type="button" class="hs-howto-toggle" data-id="${ex.id}" aria-expanded="false">Anleitung anzeigen</button>` +
+        `<div class="hs-exercise-howto hidden" id="howto-${ex.id}">${escapeHtml(ex.howto)}</div>`
+      : '';
+    return `
+      <div class="hs-exercise">
+        <div class="hs-exercise-head">
+          <div class="exercise-info">
+            <div class="exercise-name">${escapeHtml(ex.name)}</div>
+            ${detail}
+          </div>
+          <div class="exercise-checkboxes">
+            <input type="checkbox" id="hs-${ex.id}" data-id="${ex.id}">
+          </div>
+        </div>
+        ${howto}
+      </div>`;
+  }).join('');
+
+  list.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      hideHandstandBar();
+      const id = cb.dataset.id;
+      if (cb.checked) state.checkedHandstand.add(id);
+      else state.checkedHandstand.delete(id);
+      updateHandstandButton();
+    });
+  });
+
+  list.querySelectorAll('.hs-howto-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const panel = document.getElementById(`howto-${btn.dataset.id}`);
+      if (!panel) return;
+      const open = !panel.classList.toggle('hidden'); // toggle returns true when now hidden
+      btn.setAttribute('aria-expanded', String(open));
+      btn.textContent = open ? 'Anleitung verbergen' : 'Anleitung anzeigen';
+    });
+  });
+
+  const btn = document.getElementById('btn-complete-handstand');
+  btn.disabled = true;
+  btn.onclick = completeHandstandSession;
+}
+
+function updateHandstandButton() {
+  // One block is a pick-what-you-did menu, so a single checked exercise is enough.
+  const btn = document.getElementById('btn-complete-handstand');
+  if (btn) btn.disabled = state.checkedHandstand.size === 0;
+}
+
+async function completeHandstandSession() {
+  document.getElementById('btn-complete-handstand').disabled = true;
+  const exercises = Array.from(state.checkedHandstand);
+  const record = {
+    id: Date.now(),
+    user_id: state.userId,
+    block: state.handstandBlock,
+    session_date: new Date().toISOString().split('T')[0],
+    exercises,
+  };
+
+  // Write to localStorage first (offline safety), like completeSession.
+  const pending = lsGet('mu_pending_handstand') || [];
+  pending.push(record);
+  lsSet('mu_pending_handstand', pending);
+
+  const { data, error } = await DB.saveHandstandSession(
+    record.user_id, record.block, record.exercises);
+
+  if (!error) {
+    const updated = (lsGet('mu_pending_handstand') || []).filter(s => s.id !== record.id);
+    lsSet('mu_pending_handstand', updated);
+  }
+
+  state.lastHandstandSession = {
+    localId: record.id,
+    supabaseId: data?.id ?? null,
+    block: record.block,
+    exercises,
+  };
+
+  state.handstandCount++;
+  renderHandstandProgress();
+  renderHandstandExercises(); // clears checkboxes
+  renderHandstandStandings();
+  showHandstandBar();
+}
+
+function showHandstandBar() {
+  document.getElementById('handstand-bar').classList.remove('hidden');
+  document.getElementById('btn-undo-handstand').onclick = undoLastHandstandSession;
+}
+
+function hideHandstandBar() {
+  const bar = document.getElementById('handstand-bar');
+  if (bar) bar.classList.add('hidden');
+}
+
+async function undoLastHandstandSession() {
+  if (!state.lastHandstandSession) return;
+  const { localId, supabaseId } = state.lastHandstandSession;
+
+  const updated = (lsGet('mu_pending_handstand') || []).filter(s => s.id !== localId);
+  lsSet('mu_pending_handstand', updated);
+
+  if (supabaseId) await DB.deleteHandstandSession(supabaseId);
+
+  state.handstandCount--;
+  state.lastHandstandSession = null;
+  hideHandstandBar();
+  renderHandstandProgress();
+  renderHandstandStandings();
+}
+
+async function renderHandstandStandings() {
+  if (!state.userId) return;
+  const container = document.getElementById('handstand-standings');
+  if (!container) return;
+
+  if (!state.isOnline) {
+    container.innerHTML = '<p class="offline-text">Offline</p>';
+    return;
+  }
+
+  let profiles, sessions;
+  try {
+    const [pRes, sRes] = await Promise.all([DB.getAllProfiles(), DB.getAllHandstandSessions()]);
+    if (pRes.error || sRes.error) throw (pRes.error || sRes.error);
+    profiles = pRes.data || [];
+    sessions = sRes.data || [];
+  } catch (e) {
+    container.innerHTML = '<p class="offline-text">Offline</p>';
+    return;
+  }
+
+  if (!profiles.length) {
+    container.innerHTML = '<p class="no-data-text">Noch keine Nutzer.</p>';
+    return;
+  }
+
+  const counts = {};
+  sessions.forEach(s => { counts[s.user_id] = (counts[s.user_id] || 0) + 1; });
+
+  const ranked = profiles
+    .map(p => ({ user_id: p.user_id, username: p.username, total: counts[p.user_id] || 0 }))
+    .sort((a, b) => b.total - a.total);
+
+  container.innerHTML = ranked.map((u, i) => {
+    const isMe = u.user_id === state.userId;
+    return `
+      <div class="leaderboard-row${isMe ? ' is-me' : ''}">
+        <span class="lb-rank">${i + 1}</span>
+        <div class="lb-main">
+          <div class="lb-top">
+            <span class="lb-name">${escapeHtml(u.username)}</span>
+            <span class="lb-phase-badge">${u.total} ${u.total === 1 ? 'Einheit' : 'Einheiten'}</span>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function retryPendingHandstand() {
+  if (!state.userId) return;
+  const pending = lsGet('mu_pending_handstand') || [];
+  if (!pending.length) return;
+
+  const remaining = [];
+  for (const s of pending) {
+    if (!s.user_id) continue; // no legacy entries exist for this newer feature
+    const { error } = await DB.saveHandstandSession(s.user_id, s.block, s.exercises, s.session_date);
+    if (error) remaining.push(s);
+  }
+  lsSet('mu_pending_handstand', remaining);
+  renderHandstandStandings();
+}
+
 // ── Settings: name, password, progress reset ───────────────────────────────
 function initSettings() {
   document.getElementById('name-form').addEventListener('submit', onNameSubmit);
@@ -843,6 +1091,7 @@ function initNetworkListeners() {
   window.addEventListener('online', () => {
     state.isOnline = true;
     retryPendingSessions();
+    retryPendingHandstand();
     renderLeaderboard();
   });
   window.addEventListener('offline', () => {

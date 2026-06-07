@@ -99,5 +99,42 @@ window.DB = (() => {
       .select('user_id, phase');
   }
 
-  return { client, getProfile, upsertProfile, getSessionCount, saveSession, deleteSession, getSessions, deleteSessionsForPhase, deleteSessionsByIds, getAllProfiles, getAllSessions };
+  // Handstand practice ────────────────────────────────────────────────────────
+  // Parallel to the muscle-up sessions, but keyed by `block` (a-warmup … e-skill)
+  // instead of a phase number. Same offline-first + RLS + realtime model.
+  async function saveHandstandSession(userId, block, exercises, sessionDate) {
+    return client
+      .from('handstand_sessions')
+      .insert({
+        user_id: userId,
+        block,
+        session_date: sessionDate || new Date().toISOString().split('T')[0],
+        exercises,
+      })
+      .select('id')
+      .single();
+  }
+
+  async function getHandstandCount(userId) {
+    return client
+      .from('handstand_sessions')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId);
+  }
+
+  async function deleteHandstandSession(id) {
+    return client
+      .from('handstand_sessions')
+      .delete()
+      .eq('id', id);
+  }
+
+  // Standings read — tiny data, aggregate client-side (count rows per user).
+  async function getAllHandstandSessions() {
+    return client
+      .from('handstand_sessions')
+      .select('user_id, block');
+  }
+
+  return { client, getProfile, upsertProfile, getSessionCount, saveSession, deleteSession, getSessions, deleteSessionsForPhase, deleteSessionsByIds, getAllProfiles, getAllSessions, saveHandstandSession, getHandstandCount, deleteHandstandSession, getAllHandstandSessions };
 })();
