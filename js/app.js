@@ -156,6 +156,7 @@ const PAGE_TITLES = {
   'page-today': 'Heutige Einheit',
   'page-leaderboard': 'Rangliste',
   'page-plan': 'Trainingsplan',
+  'page-settings': 'Einstellungen',
 };
 
 function navigate(pageId) {
@@ -172,6 +173,8 @@ function navigate(pageId) {
 
   // Keep the leaderboard fresh whenever it's opened.
   if (pageId === 'page-leaderboard') renderLeaderboard();
+  // Rebuild the settings page (prefill name, live session counts) on open.
+  if (pageId === 'page-settings') renderSettings();
 }
 
 function openMenu() {
@@ -584,6 +587,257 @@ async function retryPendingSessions() {
   renderLeaderboard();
 }
 
+// ── Settings: name, password, progress reset ───────────────────────────────
+function initSettings() {
+  document.getElementById('name-form').addEventListener('submit', onNameSubmit);
+  document.getElementById('password-form').addEventListener('submit', onPasswordSubmit);
+  document.getElementById('rewind-phase').addEventListener('change', renderRewindWeeks);
+  document.getElementById('btn-rewind').addEventListener('click', onRewind);
+}
+
+function setSettingsMsg(id, msg, kind) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg || '';
+  el.classList.remove('error', 'success');
+  if (kind) el.classList.add(kind);
+}
+
+function renderSettings() {
+  const nameInput = document.getElementById('settings-name');
+  if (nameInput) nameInput.value = state.username || '';
+  document.getElementById('settings-password').value = '';
+  document.getElementById('settings-password2').value = '';
+  setSettingsMsg('name-msg', '');
+  setSettingsMsg('password-msg', '');
+  setSettingsMsg('reset-msg', '');
+
+  // Rewind target phase: only phases up to (and including) the current one — you
+  // rewind backwards, never skip ahead.
+  const phaseSel = document.getElementById('rewind-phase');
+  phaseSel.innerHTML = PLAN.phases
+    .filter(p => p.number <= state.currentPhase)
+    .map(p => `<option value="${p.number}">Phase ${p.number}</option>`)
+    .join('');
+  phaseSel.value = String(state.currentPhase);
+  renderRewindWeeks();
+
+  renderPhaseClearList();
+}
+
+function renderRewindWeeks() {
+  const phaseNum = Number(document.getElementById('rewind-phase').value);
+  const phase = PLAN.phases[phaseNum - 1];
+  const [weeksStart, weeksEnd] = phase.weeks.split('-').map(Number);
+  const weekCount = weeksEnd - weeksStart + 1;
+
+  // For the current phase, only offer weeks up to where you actually are.
+  let maxWeek = weekCount;
+  if (phaseNum === state.currentPhase) {
+    maxWeek = Math.min(Math.floor(state.sessionCount / 2) + 1, weekCount);
+  }
+
+  let opts = '';
+  for (let w = 1; w <= maxWeek; w++) {
+    opts += `<option value="${w}">Woche ${w}</option>`;
+  }
+  document.getElementById('rewind-week').innerHTML = opts;
+}
+
+function renderPhaseClearList() {
+  const list = document.getElementById('phase-clear-list');
+  if (!list) return;
+
+  // Render rows immediately; counts fill in asynchronously.
+  list.innerHTML = PLAN.phases.map(p => `
+    <div class="phase-clear-row">
+      <div class="phase-clear-info">
+        <span class="phase-clear-name">Phase ${p.number}</span>
+        <span class="phase-clear-count" id="phase-count-${p.number}">…</span>
+      </div>
+      <button type="button" class="btn-clear" data-phase="${p.number}">Leeren</button>
+    </div>`).join('');
+
+  list.querySelectorAll('.btn-clear').forEach(btn =>
+    btn.addEventListener('click', () => onClearPhase(Number(btn.dataset.phase))));
+
+  PLAN.phases.forEach(async (p) => {
+    const { count } = await DB.getSessionCount(state.userId, p.number);
+    const el = document.getElementById(`phase-count-${p.number}`);
+    if (el) el.textContent = `${count || 0} Sessions`;
+  });
+}
+
+async function onNameSubmit(e) {
+  e.preventDefault();
+  setSettingsMsg('name-msg', '');
+  const name = document.getElementById('settings-name').value.trim();
+  const s = Auth.slug(name);
+  if (s.length < 2 || s.length > 30) {
+    setSettingsMsg('name-msg', 'Name muss 2 bis 30 Zeichen (Buchstaben/Zahlen) enthalten.', 'error');
+    return;
+  }
+  if (name === state.username) {
+    setSettingsMsg('name-msg', 'Das ist bereits dein Name.', 'error');
+    return;
+  }
+
+  const submit = e.target.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  const { error } = await DB.upsertProfile(state.userId, state.currentPhase, name);
+  submit.disabled = false;
+
+  if (error) {
+    const msg = error.code === '23505'
+      ? 'Dieser Name ist bereits vergeben.'
+      : (error.message || 'Name konnte nicht geändert werden.');
+    setSettingsMsg('name-msg', msg, 'error');
+    return;
+  }
+
+  state.username = name;
+  renderHeader();
+  renderLeaderboard();
+  setSettingsMsg('name-msg', 'Name gespeichert.', 'success');
+}
+
+async function onPasswordSubmit(e) {
+  e.preventDefault();
+  setSettingsMsg('password-msg', '');
+  const pw = document.getElementById('settings-password').value;
+  const pw2 = document.getElementById('settings-password2').value;
+
+  if (pw.length < 6) {
+    setSettingsMsg('password-msg', 'Passwort muss mindestens 6 Zeichen lang sein.', 'error');
+    return;
+  }
+  if (pw !== pw2) {
+    setSettingsMsg('password-msg', 'Die Passwörter stimmen nicht überein.', 'error');
+    return;
+  }
+
+  const submit = e.target.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  const { error } = await Auth.updatePassword(pw);
+  submit.disabled = false;
+
+  if (error) {
+    setSettingsMsg('password-msg', error, 'error');
+    return;
+  }
+
+  document.getElementById('settings-password').value = '';
+  document.getElementById('settings-password2').value = '';
+  setSettingsMsg('password-msg', 'Passwort geändert.', 'success');
+}
+
+// Re-render everything that depends on session counts / phase after a reset.
+function applyResetUi() {
+  hidePostSessionBar();
+  renderPhaseBanner();
+  renderWorkout();
+  renderPlanReference();
+  checkPhaseTransition();
+  renderLeaderboard();
+  renderSettings();
+}
+
+async function onRewind() {
+  const P = Number(document.getElementById('rewind-phase').value);
+  const W = Number(document.getElementById('rewind-week').value);
+  const keep = (W - 1) * 2;
+  setSettingsMsg('reset-msg', '');
+
+  const ok = confirm(
+    `Wirklich auf Phase ${P}, Woche ${W} zurückspulen? ` +
+    'Alle Sessions ab diesem Punkt (auch spätere Phasen) werden gelöscht.');
+  if (!ok) return;
+
+  const btn = document.getElementById('btn-rewind');
+  btn.disabled = true;
+
+  let keptCount = keep;
+  try {
+    // 1. Trim the target phase: keep the oldest `keep` sessions, delete the rest.
+    const { data: sessions, error: getErr } = await DB.getSessions(state.userId, P);
+    if (getErr) throw getErr;
+    const ordered = sessions || [];
+    const toDelete = ordered.slice(keep).map(row => row.id);
+    keptCount = ordered.length - toDelete.length; // clamps if user has fewer sessions
+    if (toDelete.length) {
+      const { error } = await DB.deleteSessionsByIds(toDelete);
+      if (error) throw error;
+    }
+    // 2. Delete every session in later phases.
+    for (const phase of PLAN.phases) {
+      if (phase.number > P) {
+        const { error } = await DB.deleteSessionsForPhase(state.userId, phase.number);
+        if (error) throw error;
+      }
+    }
+    // 3. Move the current-phase pointer back to P.
+    const { error: profErr } = await DB.upsertProfile(state.userId, P);
+    if (profErr) throw profErr;
+  } catch (err) {
+    console.error('Rewind failed:', err);
+    btn.disabled = false;
+    setSettingsMsg('reset-msg', 'Konnte nicht zurücksetzen. Bitte online sein und erneut versuchen.', 'error');
+    return;
+  }
+
+  pruneLocalAfterReset(P);
+  state.currentPhase = P;
+  state.sessionCount = keptCount;
+  state.lastSession = null;
+  lsSet(`mu_phase_${state.userId}`, P);
+
+  btn.disabled = false;
+  applyResetUi();
+  setSettingsMsg('reset-msg', `Zurückgespult auf Phase ${P}, Woche ${W}.`, 'success');
+}
+
+async function onClearPhase(P) {
+  setSettingsMsg('reset-msg', '');
+  const ok = confirm(`Wirklich alle Sessions von Phase ${P} löschen?`);
+  if (!ok) return;
+
+  const btn = document.querySelector(`.btn-clear[data-phase="${P}"]`);
+  if (btn) btn.disabled = true;
+
+  const { error } = await DB.deleteSessionsForPhase(state.userId, P);
+  if (error) {
+    console.error('Clear phase failed:', error);
+    if (btn) btn.disabled = false;
+    setSettingsMsg('reset-msg', 'Konnte nicht zurücksetzen. Bitte online sein und erneut versuchen.', 'error');
+    return;
+  }
+
+  // Drop queued offline sessions for this phase and reset its banner-dismiss flag.
+  const pending = (lsGet('mu_pending_sessions') || []).filter(row => Number(row.phase) !== P);
+  lsSet('mu_pending_sessions', pending);
+  localStorage.removeItem(`mu_phase${P}_transition_dismissed_${state.userId}`);
+
+  if (P === state.currentPhase) {
+    state.sessionCount = 0;
+    state.lastSession = null;
+  }
+  applyResetUi();
+  setSettingsMsg('reset-msg', `Phase ${P} geleert.`, 'success');
+}
+
+// After a rewind to phase `fromPhase`: drop queued sessions at/after that point
+// and clear transition-dismissed flags so the banners re-evaluate cleanly.
+function pruneLocalAfterReset(fromPhase) {
+  const pending = (lsGet('mu_pending_sessions') || [])
+    .filter(row => Number(row.phase) < fromPhase);
+  lsSet('mu_pending_sessions', pending);
+  PLAN.phases.forEach(p => {
+    if (p.number >= fromPhase) {
+      localStorage.removeItem(`mu_phase${p.number}_transition_dismissed_${state.userId}`);
+    }
+  });
+}
+
 // ── Network listeners (registered once) ───────────────────────────────────
 function initNetworkListeners() {
   window.addEventListener('online', () => {
@@ -604,6 +858,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initNetworkListeners();
   initLogout();
   initNav();
+  initSettings();
 
   // Subsequent auth transitions: login (SIGNED_IN), logout (SIGNED_OUT), token
   // refresh. INITIAL_SESSION is ignored here — the explicit getSession() below

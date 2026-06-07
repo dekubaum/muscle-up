@@ -58,6 +58,34 @@ window.DB = (() => {
       .eq('id', id);
   }
 
+  // Reset helpers ───────────────────────────────────────────────────────────
+  // Oldest-first list of a phase's sessions, so callers can keep the first N
+  // (= completed weeks) and delete the rest.
+  async function getSessions(userId, phase) {
+    return client
+      .from('sessions')
+      .select('id, session_date, created_at')
+      .eq('user_id', userId)
+      .eq('phase', phase)
+      .order('session_date', { ascending: true })
+      .order('created_at', { ascending: true });
+  }
+
+  async function deleteSessionsForPhase(userId, phase) {
+    return client
+      .from('sessions')
+      .delete()
+      .eq('user_id', userId)
+      .eq('phase', phase);
+  }
+
+  async function deleteSessionsByIds(ids) {
+    return client
+      .from('sessions')
+      .delete()
+      .in('id', ids);
+  }
+
   // Leaderboard reads — tiny data, so fetch all and aggregate client-side.
   async function getAllProfiles() {
     return client
@@ -71,5 +99,5 @@ window.DB = (() => {
       .select('user_id, phase');
   }
 
-  return { client, getProfile, upsertProfile, getSessionCount, saveSession, deleteSession, getAllProfiles, getAllSessions };
+  return { client, getProfile, upsertProfile, getSessionCount, saveSession, deleteSession, getSessions, deleteSessionsForPhase, deleteSessionsByIds, getAllProfiles, getAllSessions };
 })();

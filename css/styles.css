@@ -607,3 +607,115 @@ body.nav-open { overflow: hidden; }
 }
 
 .plan-table tr:last-child td { border-bottom: none; }
+
+/* ── Settings ── */
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-msg {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  min-height: 1.1em;
+  text-wrap: pretty;
+}
+.settings-msg.error { color: #dc2626; }
+.settings-msg.success { color: var(--success); }
+
+.settings-hint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 8px;
+  text-wrap: pretty;
+}
+
+.btn-danger {
+  width: 100%;
+  padding: 14px;
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-btn);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition-property: background-color, box-shadow, transform, opacity;
+  transition-duration: 0.15s;
+  transition-timing-function: var(--ease);
+}
+.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+.btn-danger:not(:disabled):hover { background: #b91c1c; box-shadow: var(--shadow-md); }
+.btn-danger:not(:disabled):active { transform: scale(0.97); box-shadow: var(--shadow-sm); }
+
+.reset-block {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  padding: 16px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.reset-label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 10px;
+}
+
+.reset-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.reset-select {
+  flex: 1;
+  padding: 12px 14px;
+  font-size: 1rem;
+  color: var(--text);
+  background: var(--surface2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-btn);
+  cursor: pointer;
+}
+.reset-select:focus { outline: none; background: var(--surface); border-color: var(--accent); }
+
+/* Smaller, secondary danger button for per-phase clearing. */
+.phase-clear-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.phase-clear-row:last-child { border-bottom: none; }
+
+.phase-clear-info { display: flex; flex-direction: column; gap: 2px; }
+.phase-clear-name { font-weight: 600; font-size: 0.95rem; }
+.phase-clear-count {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.btn-clear {
+  flex: none;
+  padding: 8px 14px;
+  background: var(--surface2);
+  color: #dc2626;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition-property: background-color, color, box-shadow, transform, opacity;
+  transition-duration: 0.15s;
+  transition-timing-function: var(--ease);
+}
+.btn-clear:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-clear:not(:disabled):hover { background: #dc2626; color: #fff; border-color: #dc2626; }
+.btn-clear:not(:disabled):active { transform: scale(0.97); }

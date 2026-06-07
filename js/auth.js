@@ -89,6 +89,17 @@ window.Auth = (() => {
     return client.auth.signOut();
   }
 
+  // Change the logged-in user's password. The active session authorises this,
+  // so no current password is required. -> { error: string | null }
+  async function updatePassword(newPassword) {
+    if (!newPassword || newPassword.length < 6) {
+      return { error: 'Passwort muss mindestens 6 Zeichen lang sein.' };
+    }
+    const { error } = await client.auth.updateUser({ password: newPassword });
+    if (error) return { error: error.message || 'Passwort konnte nicht geändert werden.' };
+    return { error: null };
+  }
+
   // Reads the persisted session from localStorage (no network). -> session | null
   async function getSession() {
     const { data } = await client.auth.getSession();
@@ -100,5 +111,5 @@ window.Auth = (() => {
     return client.auth.onAuthStateChange(cb);
   }
 
-  return { slug, emailFor, signUp, signIn, signOut, getSession, onChange };
+  return { slug, emailFor, signUp, signIn, signOut, updatePassword, getSession, onChange };
 })();

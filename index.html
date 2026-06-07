@@ -46,6 +46,7 @@
       <button class="nav-item" data-page="page-today">Heutige Einheit</button>
       <button class="nav-item" data-page="page-leaderboard">Rangliste</button>
       <button class="nav-item" data-page="page-plan">Trainingsplan</button>
+      <button class="nav-item" data-page="page-settings">Einstellungen</button>
       <button id="btn-logout" class="nav-item nav-logout">Abmelden</button>
     </nav>
 
@@ -99,6 +100,65 @@
         <div class="section">
           <div id="plan-reference"></div>
         </div>
+      </section>
+
+      <!-- Page: Einstellungen -->
+      <section id="page-settings" class="page hidden">
+
+        <div class="section">
+          <h3 class="section-title">Name ändern</h3>
+          <form id="name-form" class="settings-form" autocomplete="off">
+            <input id="settings-name" class="auth-input" type="text" name="display-name"
+                   placeholder="Name" autocapitalize="off" autocorrect="off"
+                   spellcheck="false" autocomplete="off" required>
+            <p id="name-msg" class="settings-msg" role="alert"></p>
+            <button type="submit" class="btn-auth">Name speichern</button>
+          </form>
+          <p class="settings-hint">
+            Der Anzeige-Name erscheint in der Rangliste und Begrüßung. Zum Einloggen gilt
+            weiterhin dein ursprünglicher Name.
+          </p>
+        </div>
+
+        <div class="section">
+          <h3 class="section-title">Passwort ändern</h3>
+          <form id="password-form" class="settings-form" autocomplete="off">
+            <input id="settings-password" class="auth-input" type="password" name="new-password"
+                   placeholder="Neues Passwort" autocomplete="new-password" required>
+            <input id="settings-password2" class="auth-input" type="password" name="new-password2"
+                   placeholder="Passwort wiederholen" autocomplete="new-password" required>
+            <p id="password-msg" class="settings-msg" role="alert"></p>
+            <button type="submit" class="btn-auth">Passwort speichern</button>
+          </form>
+        </div>
+
+        <div class="section">
+          <h3 class="section-title">Fortschritt zurücksetzen</h3>
+
+          <div class="reset-block">
+            <label class="reset-label" for="rewind-phase">Zurückspulen zu</label>
+            <div class="reset-row">
+              <select id="rewind-phase" class="reset-select"></select>
+              <select id="rewind-week" class="reset-select"></select>
+            </div>
+            <button id="btn-rewind" type="button" class="btn-danger">Zurückspulen</button>
+            <p class="settings-hint">
+              Löscht alle Sessions ab dem gewählten Punkt, inklusive späterer Phasen, und setzt
+              dich dorthin zurück.
+            </p>
+          </div>
+
+          <div class="reset-block">
+            <label class="reset-label">Einzelne Phase leeren</label>
+            <div id="phase-clear-list"></div>
+            <p class="settings-hint">
+              Löscht nur die Sessions dieser Phase. Deine aktuelle Phase bleibt unverändert.
+            </p>
+          </div>
+
+          <p id="reset-msg" class="settings-msg" role="alert"></p>
+        </div>
+
       </section>
 
     </main>
