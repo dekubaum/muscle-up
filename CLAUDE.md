@@ -22,7 +22,8 @@ Backend is Supabase with **real Supabase Auth** (username + password). The anon 
 `handstand_sessions` table: it ships in `schema.sql` for fresh projects, and an existing project
 gets it by running the idempotent [supabase/migration-handstand.sql](supabase/migration-handstand.sql)
 once (safe to re-run; until it runs, handstand completions just queue offline and standings show
-"Offline").
+"Offline"). [supabase/ACTIVATION-handstand.md](supabase/ACTIVATION-handstand.md) is the full
+activation checklist with verification queries and an in-app smoke test.
 
 **Required manual dashboard step:** in Supabase → Authentication, **disable "Confirm email"**.
 Usernames have no real email — the app maps a username to a synthetic `<slug>@muscleup.local`
@@ -148,3 +149,10 @@ domain is `@muscleup.local`, and Supabase table/column names are unchanged. Rena
 a data migration, not a cosmetic edit.
 
 UI language is German.
+
+## Reference documents
+
+- [muscle-up-trainingsplan.md](muscle-up-trainingsplan.md) — the German source training plan that
+  `js/data.js` encodes. If the plan content changes, both must be updated together.
+- [docs/superpowers/](docs/superpowers/) — the original design spec and implementation plan
+  (2026-04-17). Historical context; the sections above reflect the current state where they differ.
