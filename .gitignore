@@ -1,2 +1,5 @@
 # Superpowers tooling state (brainstorm sessions, local servers, etc.)
 .superpowers/
+
+# macOS Finder metadata
+.DS_Store
