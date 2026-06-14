@@ -4,6 +4,8 @@
 const state = {
   userId: null,         // auth.users.id (uuid) of the logged-in user
   username: null,       // display name (from profiles.username)
+  mode: 'muscleup',     // active training mode: 'muscleup' | 'handstand'
+  tab: 'today',         // active logical tab: 'today' | 'leaderboard' | 'plan' | 'settings'
   currentPhase: 1,
   sessionCount: 0,      // sessions completed in current phase
   checkedSets: new Set(), // 'exerciseId-setIndex' strings
@@ -90,6 +92,9 @@ async function onAuthSubmit(e) {
 function handleSignedOut() {
   state.userId = null;
   state.username = null;
+  state.mode = 'muscleup';
+  state.tab = 'today';
+  syncModeToggle();
   state.sessionCount = 0;
   state.lastSession = null;
   state.handstandCount = 0;
@@ -116,6 +121,8 @@ async function loadMainScreen(userId) {
   // Load phase from localStorage immediately (instant render), then sync
   state.currentPhase = lsGet(`mu_phase_${userId}`) || 1;
   state.handstandBlock = lsGet(`mu_handstand_block_${userId}`) || 'a-warmup';
+  state.mode = lsGet(`mu_mode_${userId}`) || 'muscleup';
+  syncModeToggle();
 
   const { data: profile } = await DB.getProfile(userId);
   if (profile) {
@@ -146,8 +153,8 @@ async function loadMainScreen(userId) {
   retryPendingSessions();
   retryPendingHandstand();
 
-  // Land on the default page (sets title + active nav state + entrance anim).
-  navigate('page-today');
+  // Land on the Today tab (resolves to the active mode's section + active nav state).
+  navigate('today');
 
   // Subscribe only now — after the session (and its JWT) is confirmed.
   Sync.subscribeToSessions(() => renderLeaderboard());
@@ -166,33 +173,60 @@ function initLogout() {
   });
 }
 
-// ── Navigation: pages + hamburger menu ─────────────────────────────────────
-const PAGE_TITLES = {
-  'page-today': 'Heutige Einheit',
-  'page-handstand': 'Handstand',
-  'page-leaderboard': 'Rangliste',
-  'page-plan': 'Trainingsplan',
-  'page-settings': 'Einstellungen',
+// ── Navigation: modes + tabs + hamburger menu ──────────────────────────────
+// A logical `tab` is decoupled from the concrete page section: the active `mode`
+// decides which section a tab resolves to, so the whole app reskins per mode.
+const PAGES = {
+  muscleup: {
+    today:       'page-today',
+    leaderboard: 'page-leaderboard',
+    plan:        'page-plan',
+    settings:    'page-settings',
+  },
+  handstand: {
+    today:       'page-handstand',
+    leaderboard: 'page-handstand-standings',
+    plan:        'page-handstand-plan',
+    settings:    'page-settings',
+  },
 };
 
-function navigate(pageId) {
+function navigate(tab) {
+  state.tab = tab;
+  const pageId = PAGES[state.mode][tab];
+
   document.querySelectorAll('.page').forEach(p =>
     p.classList.toggle('hidden', p.id !== pageId));
-  document.querySelectorAll('.nav-item[data-page]').forEach(item =>
-    item.classList.toggle('active', item.dataset.page === pageId));
-
-  const title = document.getElementById('page-title');
-  if (title) title.textContent = PAGE_TITLES[pageId] || '';
+  document.querySelectorAll('.nav-item[data-tab]').forEach(item =>
+    item.classList.toggle('active', item.dataset.tab === tab));
 
   closeMenu();
   window.scrollTo(0, 0);
 
-  // Keep the leaderboard fresh whenever it's opened.
-  if (pageId === 'page-leaderboard') renderLeaderboard();
-  // Rebuild the settings page (prefill name, live session counts) on open.
-  if (pageId === 'page-settings') renderSettings();
-  // Build the handstand page (block selector, exercises, standings) on open.
-  if (pageId === 'page-handstand') renderHandstand();
+  // Render the content for the resolved (mode, tab) combination.
+  if (tab === 'today' && state.mode === 'handstand') renderHandstand();
+  else if (tab === 'leaderboard') {
+    state.mode === 'handstand' ? renderHandstandStandings() : renderLeaderboard();
+  } else if (tab === 'plan' && state.mode === 'handstand') renderHandstandPlan();
+  else if (tab === 'settings') renderSettings();
+}
+
+// Switch training mode: persist it, update the toggle, and re-resolve the
+// current tab so the content swaps in place.
+function setMode(mode) {
+  if (mode === state.mode) return;
+  state.mode = mode;
+  if (state.userId) lsSet(`mu_mode_${state.userId}`, mode);
+  syncModeToggle();
+  navigate(state.tab);
+}
+
+function syncModeToggle() {
+  document.querySelectorAll('.mode-btn[data-mode]').forEach(btn => {
+    const on = btn.dataset.mode === state.mode;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
 }
 
 function openMenu() {
@@ -221,8 +255,10 @@ function initNav() {
     document.getElementById('nav-menu').classList.contains('open') ? closeMenu() : openMenu();
   });
   document.getElementById('nav-scrim').addEventListener('click', closeMenu);
-  document.querySelectorAll('.nav-item[data-page]').forEach(item =>
-    item.addEventListener('click', () => navigate(item.dataset.page)));
+  document.querySelectorAll('.nav-item[data-tab]').forEach(item =>
+    item.addEventListener('click', () => navigate(item.dataset.tab)));
+  document.querySelectorAll('.mode-btn[data-mode]').forEach(btn =>
+    btn.addEventListener('click', () => setMode(btn.dataset.mode)));
 }
 
 // ── Phase banner ───────────────────────────────────────────────────────────
@@ -613,7 +649,40 @@ function renderHandstand() {
   renderHandstandProgress();
   renderHandstandBlocks();
   renderHandstandExercises();
-  renderHandstandStandings();
+}
+
+// Read-only overview of the whole handstand program (handstand "Trainingsplan").
+// Mirrors renderPlanReference: one card per block, reusing the .plan-* styling.
+function renderHandstandPlan() {
+  const container = document.getElementById('handstand-plan');
+  if (!container) return;
+
+  container.innerHTML = HANDSTAND.blocks.map(block => `
+    <div class="plan-phase active">
+      <div class="plan-phase-title">
+        ${escapeHtml(block.letter)} · ${escapeHtml(block.name)} (${escapeHtml(block.duration)})
+      </div>
+      <div class="plan-phase-goal">${escapeHtml(block.goal)}</div>
+      <table class="plan-table">
+        <thead>
+          <tr>
+            <th>Übung</th>
+            <th>Vorgabe</th>
+            <th>Anleitung</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${block.exercises.map(ex => `
+            <tr>
+              <td>${escapeHtml(ex.name)}</td>
+              <td>${escapeHtml(ex.prescription)}</td>
+              <td>${escapeHtml(ex.howto)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `).join('');
 }
 
 function renderHandstandProgress() {

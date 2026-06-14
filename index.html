@@ -32,7 +32,10 @@
 
     <!-- Top bar: page title + hamburger -->
     <header class="topbar">
-      <span id="page-title" class="topbar-title">Heutige Einheit</span>
+      <div id="mode-toggle" class="mode-toggle" role="tablist" aria-label="Trainingsmodus">
+        <button type="button" class="mode-btn active" data-mode="muscleup" role="tab" aria-selected="true">Muscle Up</button>
+        <button type="button" class="mode-btn" data-mode="handstand" role="tab" aria-selected="false">Handstand</button>
+      </div>
       <button id="btn-menu" class="btn-menu" aria-label="Menü" aria-expanded="false" aria-controls="nav-menu">
         <span class="menu-icon menu-icon-open" aria-hidden="true">☰</span>
         <span class="menu-icon menu-icon-close" aria-hidden="true">✕</span>
@@ -43,11 +46,10 @@
     <div id="nav-scrim" class="nav-scrim"></div>
     <nav id="nav-menu" class="nav-menu" aria-hidden="true">
       <div id="nav-username" class="nav-username"></div>
-      <button class="nav-item" data-page="page-today">Heutige Einheit</button>
-      <button class="nav-item" data-page="page-handstand">Handstand</button>
-      <button class="nav-item" data-page="page-leaderboard">Rangliste</button>
-      <button class="nav-item" data-page="page-plan">Trainingsplan</button>
-      <button class="nav-item" data-page="page-settings">Einstellungen</button>
+      <button class="nav-item" data-tab="today">Heutige Einheit</button>
+      <button class="nav-item" data-tab="leaderboard">Rangliste</button>
+      <button class="nav-item" data-tab="plan">Trainingsplan</button>
+      <button class="nav-item" data-tab="settings">Einstellungen</button>
       <button id="btn-logout" class="nav-item nav-logout">Abmelden</button>
     </nav>
 
@@ -111,12 +113,22 @@
             </div>
           </div>
         </div>
+      </section>
 
+      <!-- Page: Handstand Rangliste -->
+      <section id="page-handstand-standings" class="page hidden">
         <div class="section">
           <h3 class="section-title">Handstand Rangliste</h3>
           <div id="handstand-standings" class="leaderboard">
             <p class="no-data-text">Lade...</p>
           </div>
+        </div>
+      </section>
+
+      <!-- Page: Handstand Programm -->
+      <section id="page-handstand-plan" class="page hidden">
+        <div class="section">
+          <div id="handstand-plan"></div>
         </div>
       </section>
 

@@ -193,6 +193,42 @@ body {
   text-wrap: balance;
 }
 
+/* ── Mode toggle (segmented control: Muscle Up ⇄ Handstand) ── */
+.mode-toggle {
+  display: inline-flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 3px;
+  gap: 2px;
+  background: var(--surface2);
+  border-radius: var(--radius-btn);
+}
+
+.mode-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 14px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: -0.1px;
+  white-space: nowrap;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-radius: 9px;
+  cursor: pointer;
+  transition-property: background-color, color, box-shadow, transform;
+  transition-duration: 0.18s;
+  transition-timing-function: var(--ease);
+}
+.mode-btn:active { transform: scale(0.96); }
+
+.mode-btn.active {
+  color: var(--accent);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
 .btn-menu {
   position: relative;
   width: 44px;               /* ≥40px hit area */
@@ -577,6 +613,13 @@ body.nav-open { overflow: hidden; }
   font-size: 0.85rem;
   font-weight: 700;
   color: var(--accent-light);
+  margin-bottom: 10px;
+  text-wrap: balance;
+}
+
+.plan-phase-goal {
+  font-size: 0.8rem;
+  color: var(--text-muted);
   margin-bottom: 10px;
   text-wrap: balance;
 }

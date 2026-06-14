@@ -73,11 +73,18 @@ each attaches a global the next one depends on, so the order cannot be changed c
 - **[js/app.js](js/app.js)** — everything else: one global `state` object, imperative DOM rendering
   (`render*` functions), and the session lifecycle. Two layers of routing:
   - **Auth-gated screen switch** — `showScreen` toggles `#screen-auth` vs `#screen-app`.
-  - **In-app page router** — inside `#screen-app`, `navigate(pageId)` shows one of five `.page`
-    sections (`page-today`, `page-handstand`, `page-leaderboard`, `page-plan`, `page-settings`) behind
-    a slide-down hamburger menu (`openMenu`/`closeMenu`), sets the top-bar title from `PAGE_TITLES`,
-    and lazily re-renders the handstand/leaderboard/settings pages on open. Nav buttons bind
-    automatically from their `data-page` attribute, so adding a page needs no JS wiring.
+  - **In-app mode + tab router** — inside `#screen-app` the app has two **modes** (`state.mode`:
+    `'muscleup'` | `'handstand'`), switched by an always-visible segmented toggle in the top bar
+    (`.mode-toggle` / `.mode-btn[data-mode]`, bound in `initNav`; `setMode` persists it to
+    `mu_mode_<userId>` and calls `syncModeToggle`). The hamburger menu holds four logical **tabs**
+    (`data-tab`: `today`, `leaderboard`, `plan`, `settings`) decoupled from the concrete `.page`
+    sections. `navigate(tab)` resolves the section via `PAGES[state.mode][tab]`, shows it, marks the
+    active nav item, and lazily re-renders it; `setMode` re-runs `navigate(state.tab)` so switching
+    mode swaps the content in place on the same tab. Section map: muscleup → `page-today`,
+    `page-leaderboard`, `page-plan`; handstand → `page-handstand` (today/picker),
+    `page-handstand-standings`, `page-handstand-plan`; **`page-settings` is shared across both modes**.
+    There is no top-bar title and no separate "Handstand" menu item — the mode owns that. Adding a tab
+    means adding a `data-tab` button plus an entry in each mode's `PAGES` map.
 
 ### Key patterns
 
@@ -100,7 +107,8 @@ deadlock), and same-user token refreshes are short-circuited (`uid === state.use
 **localStorage is the instant-render cache; Supabase is the shared truth.** On load,
 `loadMainScreen` reads the phase from `localStorage` first for an instant render, then reconciles
 with the `profiles` row. Keys: `mu_phase_<userId>`, `mu_pending_sessions` (records carry `user_id`),
-`mu_phase<N>_transition_dismissed_<userId>`.
+`mu_phase<N>_transition_dismissed_<userId>`, `mu_mode_<userId>` (last-used training mode),
+`mu_handstand_block_<userId>` (last-picked handstand block).
 
 **Phase progression.** `state.sessionCount` counts sessions in the *current* phase. When it
 reaches that phase's `totalSessions`, a transition banner appears. The 2→3 transition is gated
@@ -112,12 +120,15 @@ and writes to both `localStorage` and the `profiles` table.
 from both the pending queue and Supabase (by `supabaseId`); `repeatLastSession` writes another
 session with the same exercises. Both adjust `state.sessionCount` and re-render.
 
-**Handstand practice (`page-handstand`).** A parallel program, not a phase progression: the user
+**Handstand practice (handstand mode).** A parallel program, not a phase progression: the user
 picks ONE block (A–E) to train today via chips, ticks the exercises they did, and completes to log a
 `handstand_sessions` row. It deliberately reuses the muscle-up machinery rather than extending it —
 its own `render*` functions (`renderHandstand` and the `renderHandstand*` helpers), its own offline
 queue, and its own realtime channel — because the data model differs (block vs. phase, one checkbox
-per exercise vs. per set). Specifics:
+per exercise vs. per set). In the mode/tab router (above) handstand mode spreads across three
+sections: `page-handstand` is the today/picker (`renderHandstand` = progress + blocks + exercises),
+`page-handstand-standings` is the Rangliste tab, and `page-handstand-plan` is the read-only program
+overview (`renderHandstandPlan`, mirrors `renderPlanReference`). Specifics:
 - **Completion rule differs**: `updateHandstandButton` enables Complete once **≥1** exercise is
   checked (`state.checkedHandstand.size`), since a block is a pick-what-you-did menu — unlike
   `updateCompleteButton`, which requires every exercise covered.
@@ -127,8 +138,10 @@ per exercise vs. per set). Specifics:
   `handstandBlock` (persisted to `mu_handstand_block_<userId>` for an instant default),
   `checkedHandstand` (Set), `lastHandstandSession` (Undo target; no Repeat).
 - **Shared standings** (`renderHandstandStandings`) aggregate total completed sessions per user from
-  `getAllHandstandSessions` — separate from the phase-based Rangliste, rendered on the handstand page.
-- `handleSignedOut` resets the handstand state so the next user never sees the prior count.
+  `getAllHandstandSessions` — separate from the phase-based Rangliste, rendered on the handstand
+  mode's Rangliste tab (`page-handstand-standings`).
+- `handleSignedOut` resets the handstand state (and `state.mode` back to `'muscleup'`) so the next
+  user never sees the prior count or mode.
 
 **Settings page (`renderSettings`).** Three independent tools, all on `page-settings`:
 - **Display name** (`onNameSubmit`) writes only `profiles.username` via `upsertProfile`. **Gotcha:**
