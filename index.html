@@ -55,6 +55,17 @@
 
     <main id="page-content">
 
+      <!-- Announcement banner — sits above all pages, so it shows on every tab
+           and in both modes. Collapsed by default; expands inline to read. -->
+      <div id="announcement-banner" class="announce-banner hidden">
+        <button type="button" id="announce-toggle" class="announce-head" aria-expanded="false">
+          <span class="announce-bell" aria-hidden="true">📣</span>
+          <span id="announce-head-label" class="announce-head-label"></span>
+          <span class="announce-chevron" aria-hidden="true">▾</span>
+        </button>
+        <div id="announce-body" class="announce-body hidden"></div>
+      </div>
+
       <!-- Page: Heutige Einheit -->
       <section id="page-today" class="page">
         <div class="welcome-card">
@@ -176,6 +187,28 @@
             <p id="password-msg" class="settings-msg" role="alert"></p>
             <button type="submit" class="btn-auth">Passwort speichern</button>
           </form>
+        </div>
+
+        <div class="section">
+          <h3 class="section-title">Nachrichten</h3>
+          <div id="messages-list" class="messages-list"></div>
+        </div>
+
+        <!-- Admin only: compose a broadcast. Shown when state.isAdmin is true. -->
+        <div id="announce-compose" class="section hidden">
+          <h3 class="section-title">Nachricht senden</h3>
+          <form id="announce-form" class="settings-form" autocomplete="off">
+            <input id="announce-title" class="auth-input" type="text" name="announce-title"
+                   placeholder="Titel" maxlength="120" autocomplete="off" required>
+            <textarea id="announce-body-input" class="auth-input announce-textarea"
+                      name="announce-body" placeholder="Nachricht an alle …" rows="4" required></textarea>
+            <p id="announce-msg" class="settings-msg" role="alert"></p>
+            <button type="submit" class="btn-auth">Senden</button>
+          </form>
+          <p class="settings-hint">
+            Die Nachricht erscheint bei allen Nutzern als Banner, das sie lesen und als gelesen
+            markieren können.
+          </p>
         </div>
 
         <div class="section">

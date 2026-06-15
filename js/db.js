@@ -136,5 +136,43 @@ window.DB = (() => {
       .select('user_id, block');
   }
 
-  return { client, getProfile, upsertProfile, getSessionCount, saveSession, deleteSession, getSessions, deleteSessionsForPhase, deleteSessionsByIds, getAllProfiles, getAllSessions, saveHandstandSession, getHandstandCount, deleteHandstandSession, getAllHandstandSessions };
+  // Announcements ───────────────────────────────────────────────────────────
+  // Admin broadcasts a message; everyone reads it; each user records their own
+  // read receipt. Same offline-first + RLS + realtime model as the rest.
+  async function getAnnouncements() {
+    return client
+      .from('announcements')
+      .select('*')
+      .order('created_at', { ascending: false });
+  }
+
+  async function getMyReads(userId) {
+    return client
+      .from('announcement_reads')
+      .select('announcement_id')
+      .eq('user_id', userId);
+  }
+
+  async function markAnnouncementRead(announcementId, userId) {
+    return client
+      .from('announcement_reads')
+      .insert({ announcement_id: announcementId, user_id: userId });
+  }
+
+  async function createAnnouncement(authorId, title, body) {
+    return client
+      .from('announcements')
+      .insert({ author_id: authorId, title, body })
+      .select('*')
+      .single();
+  }
+
+  async function deleteAnnouncement(id) {
+    return client
+      .from('announcements')
+      .delete()
+      .eq('id', id);
+  }
+
+  return { client, getProfile, upsertProfile, getSessionCount, saveSession, deleteSession, getSessions, deleteSessionsForPhase, deleteSessionsByIds, getAllProfiles, getAllSessions, saveHandstandSession, getHandstandCount, deleteHandstandSession, getAllHandstandSessions, getAnnouncements, getMyReads, markAnnouncementRead, createAnnouncement, deleteAnnouncement };
 })();

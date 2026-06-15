@@ -12,7 +12,10 @@
 CREATE TABLE IF NOT EXISTS profiles (
   user_id       uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   username      text UNIQUE NOT NULL,
-  current_phase int NOT NULL DEFAULT 1 CHECK (current_phase BETWEEN 1 AND 3)
+  current_phase int NOT NULL DEFAULT 1 CHECK (current_phase BETWEEN 1 AND 3),
+  -- Admins may broadcast announcements (see announcements table). Set manually:
+  --   UPDATE profiles SET is_admin = true WHERE username = '<name>';
+  is_admin      boolean NOT NULL DEFAULT false
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -75,3 +78,48 @@ CREATE POLICY "hs_delete_own" ON handstand_sessions
 
 -- Real-time so the shared handstand standings update live.
 ALTER PUBLICATION supabase_realtime ADD TABLE handstand_sessions;
+
+-- ── Announcements ───────────────────────────────────────────────────────────
+-- Admin broadcasts one message to everyone. Anyone may READ (so the banner can
+-- show it), but only an admin may INSERT (enforced via the profiles.is_admin
+-- flag — not key secrecy). Read state is per-user (announcement_reads below).
+CREATE TABLE IF NOT EXISTS announcements (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  author_id   uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  title       text NOT NULL,
+  body        text NOT NULL,
+  created_at  timestamptz DEFAULT now()
+);
+
+-- One row per (announcement, user) the user has read. Absence = unread.
+CREATE TABLE IF NOT EXISTS announcement_reads (
+  announcement_id uuid NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
+  user_id         uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  read_at         timestamptz DEFAULT now(),
+  PRIMARY KEY (announcement_id, user_id)
+);
+
+ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE announcement_reads ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "announcements_select_all_auth" ON announcements
+  FOR SELECT TO authenticated USING (true);
+CREATE POLICY "announcements_insert_admin" ON announcements
+  FOR INSERT TO authenticated WITH CHECK (
+    auth.uid() = author_id
+    AND EXISTS (SELECT 1 FROM profiles p WHERE p.user_id = auth.uid() AND p.is_admin)
+  );
+CREATE POLICY "announcements_delete_admin" ON announcements
+  FOR DELETE TO authenticated USING (
+    auth.uid() = author_id
+    AND EXISTS (SELECT 1 FROM profiles p WHERE p.user_id = auth.uid() AND p.is_admin)
+  );
+
+-- Read receipts are private: each user sees and writes only their own.
+CREATE POLICY "announcement_reads_select_own" ON announcement_reads
+  FOR SELECT TO authenticated USING (auth.uid() = user_id);
+CREATE POLICY "announcement_reads_insert_own" ON announcement_reads
+  FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+
+-- Real-time so a sent announcement pushes a live banner to open clients.
+ALTER PUBLICATION supabase_realtime ADD TABLE announcements;

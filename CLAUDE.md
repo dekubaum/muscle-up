@@ -25,26 +25,41 @@ once (safe to re-run; until it runs, handstand completions just queue offline an
 "Offline"). [supabase/ACTIVATION-handstand.md](supabase/ACTIVATION-handstand.md) is the full
 activation checklist with verification queries and an in-app smoke test.
 
+The announcement feature adds an `is_admin` column to `profiles` plus `announcements` and
+`announcement_reads` tables: they ship in `schema.sql` for fresh projects, and an existing project
+gets them by running the idempotent
+[supabase/migration-announcements.sql](supabase/migration-announcements.sql) once (safe to re-run;
+until it runs, the banner/compose UI stay empty and reads queue offline). **One-time manual step:**
+grant yourself admin so the in-app compose form appears —
+`UPDATE profiles SET is_admin = true WHERE username = '<name>';`. Only admins can INSERT
+announcements (RLS-enforced).
+
 **Required manual dashboard step:** in Supabase → Authentication, **disable "Confirm email"**.
 Usernames have no real email — the app maps a username to a synthetic `<slug>@muscleup.local`
 address (see [js/auth.js](js/auth.js)), which can never be confirmed. With confirmations on,
 `signUp` returns no session and login is permanently broken. (Consequence: password reset is not
 supported — admin/manual only.)
 
-Three tables, keyed by the Auth user id (`auth.users.id`); Realtime is enabled on `sessions` and
-`handstand_sessions`:
+Five tables, keyed by the Auth user id (`auth.users.id`); Realtime is enabled on `sessions`,
+`handstand_sessions`, and `announcements`:
 - `sessions` — one row per completed muscle-up workout (`user_id`, `phase`, `session_date`,
   `exercises` jsonb)
 - `handstand_sessions` — one row per completed handstand block (`user_id`, `block`, `session_date`,
   `exercises` jsonb). Parallel to `sessions` but keyed by `block` text, not a phase number.
-- `profiles` — one row per user (`user_id` PK, unique `username`, `current_phase`)
+- `profiles` — one row per user (`user_id` PK, unique `username`, `current_phase`, `is_admin`)
+- `announcements` — one row per broadcast message (`author_id`, `title`, `body`, `created_at`)
+- `announcement_reads` — per-user read receipt (`announcement_id` + `user_id` composite PK,
+  `read_at`); absence of a row means unread
 
 RLS: any logged-in user can **read all** rows (for the leaderboard/standings) but **write only their
-own** (`auth.uid() = user_id`). `phase`/`current_phase` keep `CHECK (… BETWEEN 1 AND 3)`, so changing
-the number of phases still requires a schema migration. `handstand_sessions.block` has **no CHECK** by
-design — block ids are app-defined content, so adding a block stays a code change, not a migration.
-Usernames are unbounded (no CHECK); uniqueness is enforced by the synthetic-email uniqueness plus a
-`UNIQUE(username)` constraint.
+own** (`auth.uid() = user_id`). Two exceptions for announcements: `announcements` is
+**read-all but INSERT/DELETE admin-only** (gated by `profiles.is_admin`, not key secrecy), and
+`announcement_reads` is **private** (each user reads/writes only their own receipts).
+`phase`/`current_phase` keep `CHECK (… BETWEEN 1 AND 3)`, so changing the number of phases still
+requires a schema migration. `handstand_sessions.block` has **no CHECK** by design — block ids are
+app-defined content, so adding a block stays a code change, not a migration. Usernames are unbounded
+(no CHECK); uniqueness is enforced by the synthetic-email uniqueness plus a `UNIQUE(username)`
+constraint.
 
 ## Architecture
 
@@ -65,11 +80,12 @@ each attaches a global the next one depends on, so the order cannot be changed c
 - **[js/auth.js](js/auth.js)** — username↔synthetic-email auth: `signUp`/`signIn`/`signOut`,
   `updatePassword`, `getSession`, `onChange`, and the `slug()`/`emailFor()` that map a username to
   its `@muscleup.local` email.
-- **[js/sync.js](js/sync.js)** — `subscribeToSessions`/`subscribeToHandstand`/`unsubscribe`:
-  subscribes to **all** INSERTs on `sessions` (live leaderboard) and `handstand_sessions` (live
-  standings) via Realtime. Must be called only after a session exists (the SDK applies the JWT to the
-  realtime socket asynchronously). Two separate channels; each `subscribe*` clears only its own, and
-  `unsubscribe` tears **both** down on logout and before each re-subscribe.
+- **[js/sync.js](js/sync.js)** —
+  `subscribeToSessions`/`subscribeToHandstand`/`subscribeToAnnouncements`/`unsubscribe`: subscribes to
+  **all** INSERTs on `sessions` (live leaderboard), `handstand_sessions` (live standings), and
+  `announcements` (live banner) via Realtime. Must be called only after a session exists (the SDK
+  applies the JWT to the realtime socket asynchronously). Three separate channels; each `subscribe*`
+  clears only its own, and `unsubscribe` tears **all** down on logout and before each re-subscribe.
 - **[js/app.js](js/app.js)** — everything else: one global `state` object, imperative DOM rendering
   (`render*` functions), and the session lifecycle. Two layers of routing:
   - **Auth-gated screen switch** — `showScreen` toggles `#screen-auth` vs `#screen-app`.
@@ -108,7 +124,8 @@ deadlock), and same-user token refreshes are short-circuited (`uid === state.use
 `loadMainScreen` reads the phase from `localStorage` first for an instant render, then reconciles
 with the `profiles` row. Keys: `mu_phase_<userId>`, `mu_pending_sessions` (records carry `user_id`),
 `mu_phase<N>_transition_dismissed_<userId>`, `mu_mode_<userId>` (last-used training mode),
-`mu_handstand_block_<userId>` (last-picked handstand block).
+`mu_handstand_block_<userId>` (last-picked handstand block), `mu_pending_reads` (offline queue of
+announcement read receipts `[{ announcement_id, user_id }]`; global, like `mu_pending_sessions`).
 
 **Phase progression.** `state.sessionCount` counts sessions in the *current* phase. When it
 reaches that phase's `totalSessions`, a transition banner appears. The 2→3 transition is gated
@@ -143,7 +160,27 @@ overview (`renderHandstandPlan`, mirrors `renderPlanReference`). Specifics:
 - `handleSignedOut` resets the handstand state (and `state.mode` back to `'muscleup'`) so the next
   user never sees the prior count or mode.
 
-**Settings page (`renderSettings`).** Three independent tools, all on `page-settings`:
+**Announcements (admin broadcast → banner → archive).** An admin sends one message to everyone; on
+next open each user sees `#announcement-banner` (placed inside `<main>` *above* the `.page` sections,
+so it surfaces on every tab and both modes — unlike the phase banner, which lives in `page-today`).
+The banner is collapsed by default and **expands inline** (`announceExpanded`, UI-only) to show each
+unread message with a **Gelesen** button; once all are read it hides. All messages (read + unread)
+live in **Settings → Nachrichten** (`renderMessagesList`). Like handstand, it reuses the existing
+machinery rather than extending it — its own `render*` (`renderAnnouncementBanner`,
+`renderMessagesList`), its own offline queue, and its own realtime channel. Specifics:
+- **Admin-gated compose**: `state.isAdmin` (from `profiles.is_admin`) toggles the `#announce-compose`
+  form in Settings; `onSendAnnouncement` calls `DB.createAnnouncement`, optimistically prepends the
+  row, and marks it read for the author so they never see their own banner. RLS also enforces
+  admin-only INSERT, so the username check is UI convenience, not the security boundary.
+- **Offline-first** mirrors `completeSession`: marking read queues `{ announcement_id, user_id }` in
+  `mu_pending_reads`, flushed by `retryPendingReads()` (alongside the other retries on load and the
+  `online` event). A duplicate insert (`23505`) is treated as success.
+- **State**: `isAdmin`, `announcements` (all, newest first), `readIds` (Set of read ids); loaded in
+  `loadMainScreen` via `loadAnnouncements` (fetches `getAnnouncements` + `getMyReads`, folds in
+  queued offline receipts). `handleSignedOut` resets all three.
+- **Realtime** (`onNewAnnouncement`) prepends a live INSERT (dedup by id) and re-renders.
+
+**Settings page (`renderSettings`).** Independent tools, all on `page-settings`:
 - **Display name** (`onNameSubmit`) writes only `profiles.username` via `upsertProfile`. **Gotcha:**
   this does *not* change login — the synthetic email/slug is fixed at signup, so you always log in
   with the *original* name even after renaming. The unique-violation (`23505`) path reports

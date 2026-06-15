@@ -837,3 +837,122 @@ body.nav-open { overflow: hidden; }
 
 /* Standings rows have no progress bar — remove the name-row bottom spacing. */
 #handstand-standings .lb-top { margin-bottom: 0; }
+
+/* ── Announcement banner ── */
+.announce-banner {
+  margin: 16px 0 0;
+  background: var(--accent-soft);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.announce-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+}
+
+.announce-bell { font-size: 1.05rem; flex-shrink: 0; }
+.announce-head-label { flex: 1; font-weight: 600; font-size: 0.95rem; }
+
+.announce-chevron {
+  color: var(--accent);
+  font-size: 0.9rem;
+  transition: transform 0.2s var(--ease);
+}
+.announce-head[aria-expanded="true"] .announce-chevron { transform: rotate(180deg); }
+
+.announce-body { padding: 0 16px 14px; }
+
+.announce-item {
+  background: var(--surface);
+  border-radius: var(--radius-btn);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+}
+.announce-item + .announce-item { margin-top: 10px; }
+
+.announce-item-title { font-weight: 700; font-size: 1rem; text-wrap: balance; }
+.announce-item-date {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.announce-item-text {
+  font-size: 0.9rem;
+  margin-top: 8px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  text-wrap: pretty;
+}
+
+.btn-announce-read {
+  margin-top: 12px;
+  padding: 9px 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-btn);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition-property: background-color, box-shadow, transform;
+  transition-duration: 0.15s;
+  transition-timing-function: var(--ease);
+}
+.btn-announce-read:hover { background: var(--accent-hover); box-shadow: var(--shadow-md); }
+.btn-announce-read:active { transform: scale(0.96); }
+
+/* ── Messages archive (Settings) ── */
+.messages-list { display: flex; flex-direction: column; gap: 10px; }
+
+.message-item {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.message-top { display: flex; align-items: baseline; gap: 8px; }
+.message-title { font-weight: 700; font-size: 0.95rem; flex: 1; text-wrap: balance; }
+
+.message-new-tag {
+  flex-shrink: 0;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 99px;
+}
+
+.message-date {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.message-text {
+  font-size: 0.88rem;
+  margin-top: 8px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  text-wrap: pretty;
+}
+
+.messages-empty { color: var(--text-muted); font-size: 0.85rem; }
+
+.announce-textarea { resize: vertical; min-height: 88px; line-height: 1.5; }

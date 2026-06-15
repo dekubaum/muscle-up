@@ -17,6 +17,11 @@ const state = {
   handstandBlock: 'a-warmup', // currently selected block id
   checkedHandstand: new Set(), // checked exercise ids for the active block
   lastHandstandSession: null,  // { localId, supabaseId, block, exercises }
+
+  // Announcements (admin broadcast → banner → settings archive)
+  isAdmin: false,            // may compose/send announcements
+  announcements: [],         // all messages, newest first
+  readIds: new Set(),        // announcement ids this user has read
 };
 
 // ── LocalStorage helpers ───────────────────────────────────────────────────
@@ -100,6 +105,9 @@ function handleSignedOut() {
   state.handstandCount = 0;
   state.lastHandstandSession = null;
   state.checkedHandstand.clear();
+  state.isAdmin = false;
+  state.announcements = [];
+  state.readIds.clear();
   Sync.unsubscribe();
   closeMenu();
   showScreen('screen-auth');
@@ -128,6 +136,7 @@ async function loadMainScreen(userId) {
   if (profile) {
     state.username = profile.username;
     state.currentPhase = profile.current_phase;
+    state.isAdmin = !!profile.is_admin;
     lsSet(`mu_phase_${userId}`, profile.current_phase);
   } else {
     // Defensive: profile row missing (e.g. interrupted signup). Recreate it
@@ -150,8 +159,10 @@ async function loadMainScreen(userId) {
   checkPhaseTransition();
 
   await renderLeaderboard();
+  await loadAnnouncements();
   retryPendingSessions();
   retryPendingHandstand();
+  retryPendingReads();
 
   // Land on the Today tab (resolves to the active mode's section + active nav state).
   navigate('today');
@@ -159,6 +170,7 @@ async function loadMainScreen(userId) {
   // Subscribe only now — after the session (and its JWT) is confirmed.
   Sync.subscribeToSessions(() => renderLeaderboard());
   Sync.subscribeToHandstand(() => renderHandstandStandings());
+  Sync.subscribeToAnnouncements(onNewAnnouncement);
 }
 
 // ── Header (username in the menu) ──────────────────────────────────────────
@@ -904,12 +916,198 @@ async function retryPendingHandstand() {
   renderHandstandStandings();
 }
 
+// ── Announcements ───────────────────────────────────────────────────────────
+// Admin broadcasts a message (Settings → "Nachricht senden"); everyone else
+// sees a banner on next open, expands it inline, and taps "Gelesen" to mark it
+// read. Read messages stay in Settings → "Nachrichten". Mirrors the offline-first
+// + realtime patterns of sessions: read receipts queue in `mu_pending_reads`.
+let announceExpanded = false; // banner expand state (UI only, not persisted)
+
+async function loadAnnouncements() {
+  if (!state.userId) return;
+  try {
+    const [aRes, rRes] = await Promise.all([DB.getAnnouncements(), DB.getMyReads(state.userId)]);
+    if (aRes.error || rRes.error) throw (aRes.error || rRes.error);
+    state.announcements = aRes.data || [];
+    state.readIds = new Set((rRes.data || []).map(r => r.announcement_id));
+    // Fold in any queued offline receipts so the UI stays consistent pre-flush.
+    (lsGet('mu_pending_reads') || []).forEach(p => {
+      if (p.user_id === state.userId) state.readIds.add(p.announcement_id);
+    });
+  } catch (e) {
+    // Offline, or the announcements table isn't migrated yet — degrade quietly.
+  }
+  renderAnnouncementBanner();
+  renderMessagesList();
+}
+
+function unreadAnnouncements() {
+  return state.announcements.filter(a => !state.readIds.has(a.id));
+}
+
+function formatAnnounceDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function renderAnnouncementBanner() {
+  const banner = document.getElementById('announcement-banner');
+  if (!banner) return;
+  const unread = unreadAnnouncements();
+
+  if (!unread.length) {
+    banner.classList.add('hidden');
+    announceExpanded = false;
+    return;
+  }
+
+  banner.classList.remove('hidden');
+  document.getElementById('announce-head-label').textContent =
+    unread.length === 1 ? 'Neue Nachricht' : `${unread.length} neue Nachrichten`;
+
+  const toggle = document.getElementById('announce-toggle');
+  const body = document.getElementById('announce-body');
+  toggle.setAttribute('aria-expanded', String(announceExpanded));
+  body.classList.toggle('hidden', !announceExpanded);
+
+  body.innerHTML = unread.map(a => `
+    <div class="announce-item">
+      <div class="announce-item-title">${escapeHtml(a.title)}</div>
+      <div class="announce-item-date">${formatAnnounceDate(a.created_at)}</div>
+      <div class="announce-item-text">${escapeHtml(a.body)}</div>
+      <button type="button" class="btn-announce-read" data-id="${escapeHtml(a.id)}">Gelesen</button>
+    </div>
+  `).join('');
+
+  body.querySelectorAll('.btn-announce-read').forEach(btn =>
+    btn.addEventListener('click', () => markAnnouncementRead(btn.dataset.id)));
+}
+
+function toggleAnnounceBanner() {
+  announceExpanded = !announceExpanded;
+  renderAnnouncementBanner();
+}
+
+async function markAnnouncementRead(id) {
+  if (!id || state.readIds.has(id)) return;
+  state.readIds.add(id);
+
+  // Offline-first: queue the receipt before the network attempt.
+  const pending = lsGet('mu_pending_reads') || [];
+  if (!pending.some(p => p.announcement_id === id && p.user_id === state.userId)) {
+    pending.push({ announcement_id: id, user_id: state.userId });
+    lsSet('mu_pending_reads', pending);
+  }
+
+  renderAnnouncementBanner();
+  renderMessagesList();
+
+  const { error } = await DB.markAnnouncementRead(id, state.userId);
+  // 23505 = already recorded; treat as success and drop from the queue.
+  if (!error || error.code === '23505') {
+    const updated = (lsGet('mu_pending_reads') || [])
+      .filter(p => !(p.announcement_id === id && p.user_id === state.userId));
+    lsSet('mu_pending_reads', updated);
+  }
+}
+
+async function retryPendingReads() {
+  if (!state.userId) return;
+  const pending = lsGet('mu_pending_reads') || [];
+  if (!pending.length) return;
+
+  const remaining = [];
+  for (const p of pending) {
+    if (!p.user_id) continue;
+    const { error } = await DB.markAnnouncementRead(p.announcement_id, p.user_id);
+    if (error && error.code !== '23505') remaining.push(p);
+  }
+  lsSet('mu_pending_reads', remaining);
+}
+
+// Realtime: an admin just broadcast a message — show it live.
+function onNewAnnouncement(row) {
+  if (!row || state.announcements.some(a => a.id === row.id)) return;
+  state.announcements.unshift(row);
+  renderAnnouncementBanner();
+  renderMessagesList();
+}
+
+async function onSendAnnouncement(e) {
+  e.preventDefault();
+  setSettingsMsg('announce-msg', '');
+  const title = document.getElementById('announce-title').value.trim();
+  const body = document.getElementById('announce-body-input').value.trim();
+  if (!title || !body) {
+    setSettingsMsg('announce-msg', 'Bitte Titel und Nachricht ausfüllen.', 'error');
+    return;
+  }
+
+  const submit = e.target.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  const { data, error } = await DB.createAnnouncement(state.userId, title, body);
+  submit.disabled = false;
+
+  if (error) {
+    setSettingsMsg('announce-msg', error.message || 'Konnte nicht gesendet werden.', 'error');
+    return;
+  }
+
+  // Optimistically add it, then mark it read for the author so they don't get
+  // their own banner (markAnnouncementRead also persists the receipt).
+  if (data && !state.announcements.some(a => a.id === data.id)) {
+    state.announcements.unshift(data);
+  }
+  if (data) markAnnouncementRead(data.id);
+
+  e.target.reset();
+  renderAnnouncementBanner();
+  renderMessagesList();
+  setSettingsMsg('announce-msg', 'Nachricht gesendet.', 'success');
+}
+
+// Settings → "Nachrichten": the full archive (read + unread), newest first.
+function renderMessagesList() {
+  const list = document.getElementById('messages-list');
+  if (!list) return;
+
+  if (!state.announcements.length) {
+    list.innerHTML = '<p class="messages-empty">Noch keine Nachrichten.</p>';
+    return;
+  }
+
+  list.innerHTML = state.announcements.map(a => {
+    const unread = !state.readIds.has(a.id);
+    const tag = unread ? '<span class="message-new-tag">neu</span>' : '';
+    const readBtn = unread
+      ? `<button type="button" class="btn-announce-read" data-id="${escapeHtml(a.id)}">Gelesen</button>`
+      : '';
+    return `
+      <div class="message-item">
+        <div class="message-top">
+          <span class="message-title">${escapeHtml(a.title)}</span>
+          ${tag}
+        </div>
+        <div class="message-date">${formatAnnounceDate(a.created_at)}</div>
+        <div class="message-text">${escapeHtml(a.body)}</div>
+        ${readBtn}
+      </div>`;
+  }).join('');
+
+  list.querySelectorAll('.btn-announce-read').forEach(btn =>
+    btn.addEventListener('click', () => markAnnouncementRead(btn.dataset.id)));
+}
+
 // ── Settings: name, password, progress reset ───────────────────────────────
 function initSettings() {
   document.getElementById('name-form').addEventListener('submit', onNameSubmit);
   document.getElementById('password-form').addEventListener('submit', onPasswordSubmit);
   document.getElementById('rewind-phase').addEventListener('change', renderRewindWeeks);
   document.getElementById('btn-rewind').addEventListener('click', onRewind);
+  document.getElementById('announce-form').addEventListener('submit', onSendAnnouncement);
+  document.getElementById('announce-toggle').addEventListener('click', toggleAnnounceBanner);
 }
 
 function setSettingsMsg(id, msg, kind) {
@@ -928,6 +1126,11 @@ function renderSettings() {
   setSettingsMsg('name-msg', '');
   setSettingsMsg('password-msg', '');
   setSettingsMsg('reset-msg', '');
+  setSettingsMsg('announce-msg', '');
+
+  // Messages archive (all users) + compose form (admins only).
+  renderMessagesList();
+  document.getElementById('announce-compose').classList.toggle('hidden', !state.isAdmin);
 
   // Rewind target phase: only phases up to (and including) the current one — you
   // rewind backwards, never skip ahead.
@@ -1161,6 +1364,7 @@ function initNetworkListeners() {
     state.isOnline = true;
     retryPendingSessions();
     retryPendingHandstand();
+    retryPendingReads();
     renderLeaderboard();
   });
   window.addEventListener('offline', () => {
