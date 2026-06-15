@@ -123,3 +123,43 @@ CREATE POLICY "announcement_reads_insert_own" ON announcement_reads
 
 -- Real-time so a sent announcement pushes a live banner to open clients.
 ALTER PUBLICATION supabase_realtime ADD TABLE announcements;
+
+-- ── Feedback ────────────────────────────────────────────────────────────────
+-- Anonymous feedback: any logged-in user may submit, but the row carries NO
+-- user_id (and the app never sends one), so even an admin cannot tell who wrote
+-- it. Only admins may READ/UPDATE/DELETE (the inbox + triage workflow); a
+-- non-admin's SELECT returns nothing. `context` is jsonb (screen, mode, phase,
+-- block, app_version, user_agent) so adding a field stays a code change, not a
+-- migration. No realtime — the admin inbox loads on demand, not as a live feed.
+CREATE TABLE IF NOT EXISTS feedback (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  type        text NOT NULL CHECK (type IN ('bug','idea','praise','other')),
+  message     text NOT NULL,
+  context     jsonb NOT NULL DEFAULT '{}',
+  status      text NOT NULL DEFAULT 'new' CHECK (status IN ('new','planned','done','dismissed')),
+  created_at  timestamptz DEFAULT now()
+);
+
+ALTER TABLE feedback ENABLE ROW LEVEL SECURITY;
+
+-- Anyone authenticated may submit, but only as 'new' (no self-triaging). There
+-- is no auth.uid() = user_id check because there is no user_id — that is the
+-- anonymity guarantee.
+CREATE POLICY "feedback_insert_any_auth" ON feedback
+  FOR INSERT TO authenticated WITH CHECK (status = 'new');
+
+-- Read / triage / delete are admin-only (gated by profiles.is_admin).
+CREATE POLICY "feedback_select_admin" ON feedback
+  FOR SELECT TO authenticated USING (
+    EXISTS (SELECT 1 FROM profiles p WHERE p.user_id = auth.uid() AND p.is_admin)
+  );
+CREATE POLICY "feedback_update_admin" ON feedback
+  FOR UPDATE TO authenticated USING (
+    EXISTS (SELECT 1 FROM profiles p WHERE p.user_id = auth.uid() AND p.is_admin)
+  ) WITH CHECK (
+    EXISTS (SELECT 1 FROM profiles p WHERE p.user_id = auth.uid() AND p.is_admin)
+  );
+CREATE POLICY "feedback_delete_admin" ON feedback
+  FOR DELETE TO authenticated USING (
+    EXISTS (SELECT 1 FROM profiles p WHERE p.user_id = auth.uid() AND p.is_admin)
+  );

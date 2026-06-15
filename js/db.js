@@ -174,5 +174,36 @@ window.DB = (() => {
       .eq('id', id);
   }
 
-  return { client, getProfile, upsertProfile, getSessionCount, saveSession, deleteSession, getSessions, deleteSessionsForPhase, deleteSessionsByIds, getAllProfiles, getAllSessions, saveHandstandSession, getHandstandCount, deleteHandstandSession, getAllHandstandSessions, getAnnouncements, getMyReads, markAnnouncementRead, createAnnouncement, deleteAnnouncement };
+  // Feedback ──────────────────────────────────────────────────────────────────
+  // Anonymous: no user_id is ever sent, so a row can't be traced to its author.
+  // Anyone authenticated may submit (RLS: status must be 'new'); only admins may
+  // read/update/delete (so getFeedback returns nothing for a non-admin's JWT).
+  async function submitFeedback(type, message, context) {
+    return client
+      .from('feedback')
+      .insert({ type, message, context: context || {} });
+  }
+
+  async function getFeedback() {
+    return client
+      .from('feedback')
+      .select('*')
+      .order('created_at', { ascending: false });
+  }
+
+  async function updateFeedbackStatus(id, status) {
+    return client
+      .from('feedback')
+      .update({ status })
+      .eq('id', id);
+  }
+
+  async function deleteFeedback(id) {
+    return client
+      .from('feedback')
+      .delete()
+      .eq('id', id);
+  }
+
+  return { client, getProfile, upsertProfile, getSessionCount, saveSession, deleteSession, getSessions, deleteSessionsForPhase, deleteSessionsByIds, getAllProfiles, getAllSessions, saveHandstandSession, getHandstandCount, deleteHandstandSession, getAllHandstandSessions, getAnnouncements, getMyReads, markAnnouncementRead, createAnnouncement, deleteAnnouncement, submitFeedback, getFeedback, updateFeedbackStatus, deleteFeedback };
 })();

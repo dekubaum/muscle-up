@@ -34,14 +34,27 @@ grant yourself admin so the in-app compose form appears —
 `UPDATE profiles SET is_admin = true WHERE username = '<name>';`. Only admins can INSERT
 announcements (RLS-enforced).
 
+The feedback feature adds one table, `feedback` (anonymous user feedback → admin-only inbox). It
+ships in `schema.sql` for fresh projects, and an existing project gets it by running the idempotent
+[supabase/migration-feedback.sql](supabase/migration-feedback.sql) once (safe to re-run; until it
+runs, submissions queue offline and the inbox stays empty). It reuses the existing admin grant — no
+new manual step. The same admin flag gates the in-app inbox.
+[supabase/ACTIVATION-feedback.md](supabase/ACTIVATION-feedback.md) is the full checklist, and also
+covers the **on-demand AI triage workflow**: `scripts/fetch-feedback.sh` signs in as the admin
+(creds in a gitignored `supabase/.env.local`, copied from `.env.local.example`) and reads the table
+through admin RLS into `docs/feedback/inbox.json`; [docs/feedback/ANALYSIS.md](docs/feedback/ANALYSIS.md)
+is the runbook that turns it into a dated `triage-*.md` to choose from. After shipping an item, mark
+it `done`/`dismissed` in-app so the next fetch skips it.
+
 **Required manual dashboard step:** in Supabase → Authentication, **disable "Confirm email"**.
 Usernames have no real email — the app maps a username to a synthetic `<slug>@muscleup.local`
 address (see [js/auth.js](js/auth.js)), which can never be confirmed. With confirmations on,
 `signUp` returns no session and login is permanently broken. (Consequence: password reset is not
 supported — admin/manual only.)
 
-Five tables, keyed by the Auth user id (`auth.users.id`); Realtime is enabled on `sessions`,
-`handstand_sessions`, and `announcements`:
+Six tables, all keyed by the Auth user id (`auth.users.id`) **except `feedback`, which deliberately
+has no `user_id`** (anonymity); Realtime is enabled on `sessions`, `handstand_sessions`, and
+`announcements` (**not** `feedback`):
 - `sessions` — one row per completed muscle-up workout (`user_id`, `phase`, `session_date`,
   `exercises` jsonb)
 - `handstand_sessions` — one row per completed handstand block (`user_id`, `block`, `session_date`,
@@ -50,14 +63,22 @@ Five tables, keyed by the Auth user id (`auth.users.id`); Realtime is enabled on
 - `announcements` — one row per broadcast message (`author_id`, `title`, `body`, `created_at`)
 - `announcement_reads` — per-user read receipt (`announcement_id` + `user_id` composite PK,
   `read_at`); absence of a row means unread
+- `feedback` — one row per anonymous submission (`type` CHECK bug/idea/praise/other, `message`,
+  `context` jsonb, `status` CHECK new/planned/done/dismissed, `created_at`). **No `user_id`** — that
+  is the anonymity guarantee; `context` is jsonb (screen, mode, phase, block, app_version,
+  user_agent) so adding a field stays a code change.
 
 RLS: any logged-in user can **read all** rows (for the leaderboard/standings) but **write only their
-own** (`auth.uid() = user_id`). Two exceptions for announcements: `announcements` is
-**read-all but INSERT/DELETE admin-only** (gated by `profiles.is_admin`, not key secrecy), and
-`announcement_reads` is **private** (each user reads/writes only their own receipts).
+own** (`auth.uid() = user_id`). Exceptions: `announcements` is **read-all but INSERT/DELETE
+admin-only** (gated by `profiles.is_admin`, not key secrecy), `announcement_reads` is **private**
+(each user reads/writes only their own receipts), and `feedback` is **INSERT-any (as `new`) but
+SELECT/UPDATE/DELETE admin-only** — there is no "select own" path, so a submitter can't read their
+feedback back (reinforcing anonymity).
 `phase`/`current_phase` keep `CHECK (… BETWEEN 1 AND 3)`, so changing the number of phases still
 requires a schema migration. `handstand_sessions.block` has **no CHECK** by design — block ids are
-app-defined content, so adding a block stays a code change, not a migration. Usernames are unbounded
+app-defined content, so adding a block stays a code change, not a migration. `feedback.type`/`status`
+**do** keep CHECKs (stable enums; the triage fetch filters on `status='new'`), so adding a value
+there is a small migration. Usernames are unbounded
 (no CHECK); uniqueness is enforced by the synthetic-email uniqueness plus a `UNIQUE(username)`
 constraint.
 
@@ -125,7 +146,9 @@ deadlock), and same-user token refreshes are short-circuited (`uid === state.use
 with the `profiles` row. Keys: `mu_phase_<userId>`, `mu_pending_sessions` (records carry `user_id`),
 `mu_phase<N>_transition_dismissed_<userId>`, `mu_mode_<userId>` (last-used training mode),
 `mu_handstand_block_<userId>` (last-picked handstand block), `mu_pending_reads` (offline queue of
-announcement read receipts `[{ announcement_id, user_id }]`; global, like `mu_pending_sessions`).
+announcement read receipts `[{ announcement_id, user_id }]`; global, like `mu_pending_sessions`), and
+`mu_pending_feedback` (offline queue of anonymous feedback `[{ id, type, message, context }]`; global,
+**no `user_id`** — feedback is anonymous).
 
 **Phase progression.** `state.sessionCount` counts sessions in the *current* phase. When it
 reaches that phase's `totalSessions`, a transition banner appears. The 2→3 transition is gated
@@ -179,6 +202,27 @@ machinery rather than extending it — its own `render*` (`renderAnnouncementBan
   `loadMainScreen` via `loadAnnouncements` (fetches `getAnnouncements` + `getMyReads`, folds in
   queued offline receipts). `handleSignedOut` resets all three.
 - **Realtime** (`onNewAnnouncement`) prepends a live INSERT (dedup by id) and re-renders.
+
+**Feedback (anonymous submit → admin-only inbox → AI triage).** Any user opens a **modal** (the
+`Feedback geben` menu item, bound in `initNav`; `openFeedbackModal`/`closeFeedbackModal`) reachable
+from any tab/mode, picks a type (Bug/Idee/Lob/Sonstiges → `feedbackType`), writes a message, and
+sends. The submit is **deliberately anonymous**: `onSubmitFeedback` builds a `context` object
+(`state.tab`, `state.mode`, `state.currentPhase`, `state.handstandBlock`, `APP_VERSION`,
+`navigator.userAgent`) but **never a user_id**. Like the others, it reuses existing machinery rather
+than extending it — its own `render*`, its own offline queue, **no realtime**. Specifics:
+- **Offline-first** mirrors `completeSession`: queue key `mu_pending_feedback`, flushed by
+  `retryPendingFeedback()` (alongside the other retries on load and the `online` event). The modal
+  shows a "Danke" then closes regardless of online/offline (the queue handles delivery).
+- **Admin inbox** lives in **Settings → Feedback** (`#feedback-inbox`, gated by `state.isAdmin` like
+  `#announce-compose`). `renderSettings` lazily calls `loadFeedback().then(renderFeedbackInbox)` on
+  each visit (fresh data, no realtime). `renderFeedbackInbox` shows type/status badges + the context
+  summary; status buttons call `updateFeedbackStatus`, delete calls `deleteFeedback` (both optimistic,
+  reverting via `loadFeedback` on error).
+- **State**: `isAdmin` (reused), `feedback` (all rows, newest first; empty for non-admins, since RLS
+  SELECT is admin-only). `handleSignedOut` resets `feedback`.
+- **AI triage** is an external on-demand dev workflow, not in-app — see `scripts/fetch-feedback.sh`,
+  `supabase/.env.local`, and `docs/feedback/ANALYSIS.md` (documented under Backend setup).
+- `APP_VERSION` (top of `app.js`) is a hand-bumped release marker captured into `context`.
 
 **Settings page (`renderSettings`).** Independent tools, all on `page-settings`:
 - **Display name** (`onNameSubmit`) writes only `profiles.username` via `upsertProfile`. **Gotcha:**

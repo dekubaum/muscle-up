@@ -61,6 +61,11 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 .page:not(.hidden) > * {
   animation: fade-up 0.4s var(--ease) both;
 }
@@ -956,3 +961,141 @@ body.nav-open { overflow: hidden; }
 .messages-empty { color: var(--text-muted); font-size: 0.85rem; }
 
 .announce-textarea { resize: vertical; min-height: 88px; line-height: 1.5; }
+
+/* ── Feedback modal ── */
+.feedback-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(16, 24, 40, 0.45);
+  animation: fade-in 0.18s var(--ease) both;
+}
+@media (min-width: 520px) { .feedback-modal { align-items: center; } }
+
+.feedback-card {
+  width: 100%;
+  max-width: 480px;
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-md);
+  padding: 18px 18px 16px;
+  animation: fade-up 0.22s var(--ease) both;
+}
+
+.feedback-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.feedback-heading { font-size: 1.05rem; font-weight: 700; }
+.feedback-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: var(--radius-btn);
+}
+.feedback-close:hover { background: var(--surface2); color: var(--text); }
+
+.fb-type-selector { display: flex; flex-wrap: wrap; gap: 8px; }
+.fb-type-btn {
+  flex: 1 1 auto;
+  min-width: 70px;
+  padding: 9px 12px;
+  background: var(--surface2);
+  color: var(--text-muted);
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-btn);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.fb-type-btn:hover { background: var(--accent-soft); color: var(--accent); }
+.fb-type-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── Feedback inbox (admin, Settings) ── */
+.feedback-list { display: flex; flex-direction: column; gap: 10px; }
+
+.feedback-item {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.fb-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+.fb-type, .fb-status {
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: 99px;
+}
+.fb-type { background: var(--accent-soft); color: var(--accent); }
+.fb-type-bug { background: #fee2e2; color: #b91c1c; }
+.fb-type-idea { background: #e0f2fe; color: #0369a1; }
+.fb-type-praise { background: var(--success-soft); color: var(--success); }
+.fb-type-other { background: var(--surface2); color: var(--text-muted); }
+
+.fb-status { background: var(--surface2); color: var(--text-muted); }
+.fb-status-new { background: var(--accent-soft); color: var(--accent); }
+.fb-status-done { background: var(--success-soft); color: var(--success); }
+
+.fb-date {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.fb-message {
+  font-size: 0.9rem;
+  margin-top: 10px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  text-wrap: pretty;
+}
+.fb-context {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+  font-weight: 600;
+}
+.fb-ua {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  word-break: break-word;
+  opacity: 0.8;
+}
+
+.fb-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.btn-fb-status, .btn-fb-delete {
+  padding: 6px 12px;
+  border-radius: var(--radius-btn);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  transition: background-color 0.15s var(--ease);
+}
+.btn-fb-status:hover { background: var(--accent-soft); color: var(--accent); }
+.btn-fb-delete { color: var(--danger, #dc2626); }
+.btn-fb-delete:hover { background: #fee2e2; }

@@ -50,6 +50,7 @@
       <button class="nav-item" data-tab="leaderboard">Rangliste</button>
       <button class="nav-item" data-tab="plan">Trainingsplan</button>
       <button class="nav-item" data-tab="settings">Einstellungen</button>
+      <button class="nav-item" data-feedback>Feedback geben</button>
       <button id="btn-logout" class="nav-item nav-logout">Abmelden</button>
     </nav>
 
@@ -211,6 +212,15 @@
           </p>
         </div>
 
+        <!-- Admin only: anonymous feedback inbox. Shown when state.isAdmin is true. -->
+        <div id="feedback-inbox" class="section hidden">
+          <h3 class="section-title">Feedback</h3>
+          <div id="feedback-list" class="feedback-list"></div>
+          <p class="settings-hint">
+            Anonymes Feedback aller Nutzer. Es enthält keine Absender-Information.
+          </p>
+        </div>
+
         <div class="section">
           <h3 class="section-title">Fortschritt zurücksetzen</h3>
 
@@ -241,6 +251,32 @@
       </section>
 
     </main>
+
+    <!-- Feedback modal — reachable from the menu on any tab/mode. Anonymous:
+         no identity is captured or sent. Hidden until opened. -->
+    <div id="feedback-modal" class="feedback-modal hidden">
+      <div class="feedback-card" role="dialog" aria-modal="true" aria-labelledby="feedback-heading">
+        <div class="feedback-card-head">
+          <h2 id="feedback-heading" class="feedback-heading">Feedback geben</h2>
+          <button type="button" id="feedback-close" class="feedback-close" aria-label="Schließen">✕</button>
+        </div>
+        <form id="feedback-form" class="settings-form" autocomplete="off">
+          <div id="feedback-type" class="fb-type-selector" role="group" aria-label="Art des Feedbacks">
+            <button type="button" class="fb-type-btn" data-ftype="bug">Bug</button>
+            <button type="button" class="fb-type-btn" data-ftype="idea">Idee</button>
+            <button type="button" class="fb-type-btn" data-ftype="praise">Lob</button>
+            <button type="button" class="fb-type-btn" data-ftype="other">Sonstiges</button>
+          </div>
+          <textarea id="feedback-message" class="auth-input announce-textarea"
+                    name="feedback-message" placeholder="Was möchtest du uns mitteilen?"
+                    rows="5" required></textarea>
+          <p id="feedback-msg" class="settings-msg" role="alert"></p>
+          <button type="submit" id="feedback-submit" class="btn-auth" disabled>Senden</button>
+        </form>
+        <p class="settings-hint">Dein Feedback ist anonym – wir sehen nicht, wer es gesendet hat.</p>
+      </div>
+    </div>
+
   </div>
 
   <!-- Scripts — order matters: supabase → data → db → auth → sync → app -->

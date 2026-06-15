@@ -3,3 +3,7 @@
 
 # macOS Finder metadata
 .DS_Store
+
+# Feedback triage workflow — local admin credentials + fetched data (never commit)
+supabase/.env.local
+docs/feedback/inbox.json

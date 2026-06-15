@@ -1,5 +1,9 @@
 // js/app.js
 
+// Bump on each release. Captured into feedback context so the admin/AI triage
+// knows which build a report came from.
+const APP_VERSION = '1.0.0';
+
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
   userId: null,         // auth.users.id (uuid) of the logged-in user
@@ -19,9 +23,12 @@ const state = {
   lastHandstandSession: null,  // { localId, supabaseId, block, exercises }
 
   // Announcements (admin broadcast → banner → settings archive)
-  isAdmin: false,            // may compose/send announcements
+  isAdmin: false,            // may compose/send announcements + read feedback inbox
   announcements: [],         // all messages, newest first
   readIds: new Set(),        // announcement ids this user has read
+
+  // Feedback (anonymous submit → admin-only inbox). Admin-only field.
+  feedback: [],              // all feedback rows, newest first (empty for non-admins)
 };
 
 // ── LocalStorage helpers ───────────────────────────────────────────────────
@@ -108,6 +115,7 @@ function handleSignedOut() {
   state.isAdmin = false;
   state.announcements = [];
   state.readIds.clear();
+  state.feedback = [];
   Sync.unsubscribe();
   closeMenu();
   showScreen('screen-auth');
@@ -163,6 +171,7 @@ async function loadMainScreen(userId) {
   retryPendingSessions();
   retryPendingHandstand();
   retryPendingReads();
+  retryPendingFeedback();
 
   // Land on the Today tab (resolves to the active mode's section + active nav state).
   navigate('today');
@@ -271,6 +280,8 @@ function initNav() {
     item.addEventListener('click', () => navigate(item.dataset.tab)));
   document.querySelectorAll('.mode-btn[data-mode]').forEach(btn =>
     btn.addEventListener('click', () => setMode(btn.dataset.mode)));
+  const fb = document.querySelector('.nav-item[data-feedback]');
+  if (fb) fb.addEventListener('click', openFeedbackModal);
 }
 
 // ── Phase banner ───────────────────────────────────────────────────────────
@@ -1100,6 +1111,208 @@ function renderMessagesList() {
     btn.addEventListener('click', () => markAnnouncementRead(btn.dataset.id)));
 }
 
+// ── Feedback ─────────────────────────────────────────────────────────────────
+// Any user submits anonymous feedback from a modal reachable anywhere (the menu).
+// No user_id is ever sent — the row can't be traced to its author. Mirrors the
+// offline-first pattern of completeSession: the entry queues in `mu_pending_feedback`
+// before the network attempt. The admin-only inbox lives in Settings (no realtime —
+// it loads fresh each visit).
+const FEEDBACK_TYPES = [
+  { id: 'bug',    label: 'Bug' },
+  { id: 'idea',   label: 'Idee' },
+  { id: 'praise', label: 'Lob' },
+  { id: 'other',  label: 'Sonstiges' },
+];
+const FEEDBACK_STATUSES = {
+  new:       'Neu',
+  planned:   'Geplant',
+  done:      'Erledigt',
+  dismissed: 'Verworfen',
+};
+let feedbackType = null; // currently picked type id in the modal (null = none yet)
+
+function initFeedback() {
+  const form = document.getElementById('feedback-form');
+  if (form) form.addEventListener('submit', onSubmitFeedback);
+  const close = document.getElementById('feedback-close');
+  if (close) close.addEventListener('click', closeFeedbackModal);
+  const modal = document.getElementById('feedback-modal');
+  // Click on the dim backdrop (not the card) closes.
+  if (modal) modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeFeedbackModal();
+  });
+  document.querySelectorAll('#feedback-type .fb-type-btn').forEach(btn =>
+    btn.addEventListener('click', () => selectFeedbackType(btn.dataset.ftype)));
+  const ta = document.getElementById('feedback-message');
+  if (ta) ta.addEventListener('input', updateFeedbackSubmit);
+}
+
+function openFeedbackModal() {
+  closeMenu();
+  feedbackType = null;
+  const form = document.getElementById('feedback-form');
+  if (form) form.reset();
+  syncFeedbackTypeButtons();
+  updateFeedbackSubmit();
+  setSettingsMsg('feedback-msg', '');
+  document.getElementById('feedback-modal').classList.remove('hidden');
+  document.body.classList.add('nav-open'); // reuse scroll-lock
+  const ta = document.getElementById('feedback-message');
+  if (ta) setTimeout(() => ta.focus(), 50);
+}
+
+function closeFeedbackModal() {
+  document.getElementById('feedback-modal').classList.add('hidden');
+  document.body.classList.remove('nav-open');
+}
+
+function selectFeedbackType(id) {
+  feedbackType = id;
+  syncFeedbackTypeButtons();
+  updateFeedbackSubmit();
+}
+
+function syncFeedbackTypeButtons() {
+  document.querySelectorAll('#feedback-type .fb-type-btn').forEach(btn =>
+    btn.classList.toggle('active', btn.dataset.ftype === feedbackType));
+}
+
+function updateFeedbackSubmit() {
+  const btn = document.getElementById('feedback-submit');
+  const msg = (document.getElementById('feedback-message').value || '').trim();
+  if (btn) btn.disabled = !(feedbackType && msg);
+}
+
+async function onSubmitFeedback(e) {
+  e.preventDefault();
+  setSettingsMsg('feedback-msg', '');
+  const message = document.getElementById('feedback-message').value.trim();
+  if (!feedbackType || !message) {
+    setSettingsMsg('feedback-msg', 'Bitte Art wählen und etwas schreiben.', 'error');
+    return;
+  }
+
+  // Context is deliberately identity-free (no user_id, no username).
+  const context = {
+    screen: state.tab,
+    mode: state.mode,
+    phase: state.currentPhase,
+    block: state.handstandBlock,
+    app_version: APP_VERSION,
+    user_agent: navigator.userAgent,
+  };
+  const record = { id: Date.now(), type: feedbackType, message, context };
+
+  // Offline-first: queue before the network attempt (like completeSession).
+  const pending = lsGet('mu_pending_feedback') || [];
+  pending.push(record);
+  lsSet('mu_pending_feedback', pending);
+
+  const submit = document.getElementById('feedback-submit');
+  if (submit) submit.disabled = true;
+  const { error } = await DB.submitFeedback(record.type, record.message, record.context);
+  if (!error) {
+    const updated = (lsGet('mu_pending_feedback') || []).filter(r => r.id !== record.id);
+    lsSet('mu_pending_feedback', updated);
+  }
+
+  // It either reached the server or is safely queued — either way, thank them,
+  // then close. (No status leak about online/offline; the queue handles it.)
+  setSettingsMsg('feedback-msg', 'Danke für dein Feedback!', 'success');
+  setTimeout(closeFeedbackModal, 1200);
+}
+
+async function retryPendingFeedback() {
+  const pending = lsGet('mu_pending_feedback') || [];
+  if (!pending.length) return;
+  const remaining = [];
+  for (const r of pending) {
+    const { error } = await DB.submitFeedback(r.type, r.message, r.context);
+    if (error) remaining.push(r);
+  }
+  lsSet('mu_pending_feedback', remaining);
+}
+
+// Admin inbox (Settings → Feedback). Loaded fresh each Settings visit.
+async function loadFeedback() {
+  if (!state.userId || !state.isAdmin) return;
+  try {
+    const { data, error } = await DB.getFeedback();
+    if (error) throw error;
+    state.feedback = data || [];
+  } catch (e) {
+    // Offline, or the feedback table isn't migrated yet — degrade quietly.
+  }
+}
+
+function feedbackContextSummary(ctx) {
+  if (!ctx) return '';
+  const parts = [];
+  if (ctx.mode) parts.push(ctx.mode === 'handstand' ? 'Handstand' : 'Muscle Up');
+  if (ctx.screen) parts.push(ctx.screen);
+  if (ctx.mode === 'handstand' && ctx.block) parts.push(`Block ${ctx.block}`);
+  else if (ctx.phase != null) parts.push(`Phase ${ctx.phase}`);
+  if (ctx.app_version) parts.push(`v${ctx.app_version}`);
+  return parts.join(' · ');
+}
+
+function renderFeedbackInbox() {
+  const list = document.getElementById('feedback-list');
+  if (!list) return;
+
+  if (!state.feedback.length) {
+    list.innerHTML = '<p class="messages-empty">Noch kein Feedback.</p>';
+    return;
+  }
+
+  list.innerHTML = state.feedback.map(f => {
+    const typeLabel = (FEEDBACK_TYPES.find(t => t.id === f.type) || {}).label || f.type;
+    const statusLabel = FEEDBACK_STATUSES[f.status] || f.status;
+    const ctx = f.context || {};
+    const summary = feedbackContextSummary(ctx);
+    const ua = ctx.user_agent ? `<div class="fb-ua">${escapeHtml(ctx.user_agent)}</div>` : '';
+    const statusBtns = ['planned', 'done', 'dismissed']
+      .filter(s => s !== f.status)
+      .map(s => `<button type="button" class="btn-fb-status" data-id="${escapeHtml(f.id)}" data-status="${s}">${FEEDBACK_STATUSES[s]}</button>`)
+      .join('');
+    return `
+      <div class="feedback-item">
+        <div class="fb-top">
+          <span class="fb-type fb-type-${escapeHtml(f.type)}">${escapeHtml(typeLabel)}</span>
+          <span class="fb-status fb-status-${escapeHtml(f.status)}">${escapeHtml(statusLabel)}</span>
+          <span class="fb-date">${formatAnnounceDate(f.created_at)}</span>
+        </div>
+        <div class="fb-message">${escapeHtml(f.message)}</div>
+        ${summary ? `<div class="fb-context">${escapeHtml(summary)}</div>` : ''}
+        ${ua}
+        <div class="fb-actions">
+          ${statusBtns}
+          <button type="button" class="btn-fb-delete" data-id="${escapeHtml(f.id)}">Löschen</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  list.querySelectorAll('.btn-fb-status').forEach(btn =>
+    btn.addEventListener('click', () => onFeedbackStatus(btn.dataset.id, btn.dataset.status)));
+  list.querySelectorAll('.btn-fb-delete').forEach(btn =>
+    btn.addEventListener('click', () => onFeedbackDelete(btn.dataset.id)));
+}
+
+async function onFeedbackStatus(id, status) {
+  const item = state.feedback.find(f => f.id === id);
+  if (item) item.status = status; // optimistic
+  renderFeedbackInbox();
+  const { error } = await DB.updateFeedbackStatus(id, status);
+  if (error) { await loadFeedback(); renderFeedbackInbox(); }
+}
+
+async function onFeedbackDelete(id) {
+  state.feedback = state.feedback.filter(f => f.id !== id); // optimistic
+  renderFeedbackInbox();
+  const { error } = await DB.deleteFeedback(id);
+  if (error) { await loadFeedback(); renderFeedbackInbox(); }
+}
+
 // ── Settings: name, password, progress reset ───────────────────────────────
 function initSettings() {
   document.getElementById('name-form').addEventListener('submit', onNameSubmit);
@@ -1131,6 +1344,14 @@ function renderSettings() {
   // Messages archive (all users) + compose form (admins only).
   renderMessagesList();
   document.getElementById('announce-compose').classList.toggle('hidden', !state.isAdmin);
+
+  // Feedback inbox (admins only). Load fresh each visit — no realtime.
+  const inbox = document.getElementById('feedback-inbox');
+  inbox.classList.toggle('hidden', !state.isAdmin);
+  if (state.isAdmin) {
+    renderFeedbackInbox();
+    loadFeedback().then(renderFeedbackInbox);
+  }
 
   // Rewind target phase: only phases up to (and including) the current one — you
   // rewind backwards, never skip ahead.
@@ -1365,6 +1586,7 @@ function initNetworkListeners() {
     retryPendingSessions();
     retryPendingHandstand();
     retryPendingReads();
+    retryPendingFeedback();
     renderLeaderboard();
   });
   window.addEventListener('offline', () => {
@@ -1381,6 +1603,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initLogout();
   initNav();
   initSettings();
+  initFeedback();
 
   // Subsequent auth transitions: login (SIGNED_IN), logout (SIGNED_OUT), token
   // refresh. INITIAL_SESSION is ignored here — the explicit getSession() below
