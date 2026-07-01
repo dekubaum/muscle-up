@@ -679,6 +679,65 @@ body.nav-open { overflow: hidden; }
   text-wrap: pretty;
 }
 
+/* Field group: a visible label stacked above its input. */
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+/* Password field with an inline show/hide toggle. */
+.password-field { position: relative; }
+.password-field .auth-input { padding-right: 84px; }
+.pw-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  min-width: 44px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s var(--ease);
+}
+.pw-toggle:hover { color: var(--accent); }
+
+/* Undo affordance for the deferred rewind / clear-phase deletes. */
+.reset-undo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--surface2);
+  border-radius: var(--radius-btn);
+  padding: 8px 8px 8px 14px;
+  margin-bottom: 10px;
+}
+#reset-undo-text { font-size: 0.9rem; color: var(--text); }
+.btn-undo {
+  flex: none;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.15s var(--ease);
+}
+.btn-undo:hover { color: var(--accent-hover); }
+
 .btn-danger {
   width: 100%;
   padding: 14px;
@@ -752,6 +811,10 @@ body.nav-open { overflow: hidden; }
 
 .btn-clear {
   flex: none;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 8px 14px;
   background: var(--surface2);
   color: #dc2626;
@@ -903,6 +966,10 @@ body.nav-open { overflow: hidden; }
 
 .btn-announce-read {
   margin-top: 12px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 9px 16px;
   background: var(--accent);
   color: #fff;
@@ -1086,6 +1153,10 @@ body.nav-open { overflow: hidden; }
 
 .fb-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .btn-fb-status, .btn-fb-delete {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 6px 12px;
   border-radius: var(--radius-btn);
   font-size: 0.78rem;
