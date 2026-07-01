@@ -166,9 +166,12 @@
         <div class="section">
           <h3 class="section-title">Name ändern</h3>
           <form id="name-form" class="settings-form" autocomplete="off">
-            <input id="settings-name" class="auth-input" type="text" name="display-name"
-                   placeholder="Name" autocapitalize="off" autocorrect="off"
-                   spellcheck="false" autocomplete="off" required>
+            <div class="field">
+              <label class="field-label" for="settings-name">Anzeige-Name</label>
+              <input id="settings-name" class="auth-input" type="text" name="display-name"
+                     placeholder="Name" autocapitalize="off" autocorrect="off"
+                     spellcheck="false" autocomplete="off" required>
+            </div>
             <p id="name-msg" class="settings-msg" role="alert"></p>
             <button type="submit" class="btn-auth">Name speichern</button>
           </form>
@@ -181,10 +184,24 @@
         <div class="section">
           <h3 class="section-title">Passwort ändern</h3>
           <form id="password-form" class="settings-form" autocomplete="off">
-            <input id="settings-password" class="auth-input" type="password" name="new-password"
-                   placeholder="Neues Passwort" autocomplete="new-password" required>
-            <input id="settings-password2" class="auth-input" type="password" name="new-password2"
-                   placeholder="Passwort wiederholen" autocomplete="new-password" required>
+            <div class="field">
+              <label class="field-label" for="settings-password">Neues Passwort</label>
+              <div class="password-field">
+                <input id="settings-password" class="auth-input" type="password" name="new-password"
+                       placeholder="Neues Passwort" autocomplete="new-password" required>
+                <button type="button" class="pw-toggle" data-target="settings-password"
+                        aria-label="Passwort anzeigen" aria-pressed="false">Zeigen</button>
+              </div>
+            </div>
+            <div class="field">
+              <label class="field-label" for="settings-password2">Passwort wiederholen</label>
+              <div class="password-field">
+                <input id="settings-password2" class="auth-input" type="password" name="new-password2"
+                       placeholder="Passwort wiederholen" autocomplete="new-password" required>
+                <button type="button" class="pw-toggle" data-target="settings-password2"
+                        aria-label="Passwort anzeigen" aria-pressed="false">Zeigen</button>
+              </div>
+            </div>
             <p id="password-msg" class="settings-msg" role="alert"></p>
             <button type="submit" class="btn-auth">Passwort speichern</button>
           </form>
@@ -199,10 +216,16 @@
         <div id="announce-compose" class="section hidden">
           <h3 class="section-title">Nachricht senden</h3>
           <form id="announce-form" class="settings-form" autocomplete="off">
-            <input id="announce-title" class="auth-input" type="text" name="announce-title"
-                   placeholder="Titel" maxlength="120" autocomplete="off" required>
-            <textarea id="announce-body-input" class="auth-input announce-textarea"
-                      name="announce-body" placeholder="Nachricht an alle …" rows="4" required></textarea>
+            <div class="field">
+              <label class="field-label" for="announce-title">Titel</label>
+              <input id="announce-title" class="auth-input" type="text" name="announce-title"
+                     placeholder="Titel" maxlength="120" autocomplete="off" required>
+            </div>
+            <div class="field">
+              <label class="field-label" for="announce-body-input">Nachricht</label>
+              <textarea id="announce-body-input" class="auth-input announce-textarea"
+                        name="announce-body" placeholder="Nachricht an alle …" rows="4" required></textarea>
+            </div>
             <p id="announce-msg" class="settings-msg" role="alert"></p>
             <button type="submit" class="btn-auth">Senden</button>
           </form>
@@ -245,6 +268,10 @@
             </p>
           </div>
 
+          <div id="reset-undo" class="reset-undo hidden">
+            <span id="reset-undo-text"></span>
+            <button type="button" id="btn-reset-undo" class="btn-undo">Rückgängig</button>
+          </div>
           <p id="reset-msg" class="settings-msg" role="alert"></p>
         </div>
 

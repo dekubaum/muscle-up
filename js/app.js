@@ -29,6 +29,10 @@ const state = {
 
   // Feedback (anonymous submit → admin-only inbox). Admin-only field.
   feedback: [],              // all feedback rows, newest first (empty for non-admins)
+
+  // Deferred destructive reset awaiting its undo window (see onRewind/onClearPhase).
+  // { kind:'rewind'|'clear', P, W?, keep?, keptCount?, label, prevState, timer } | null
+  pendingReset: null,
 };
 
 // ── LocalStorage helpers ───────────────────────────────────────────────────
@@ -116,6 +120,9 @@ function handleSignedOut() {
   state.announcements = [];
   state.readIds.clear();
   state.feedback = [];
+  // Abandon any pending reset (safe direction: nothing was deleted server-side).
+  clearPendingResetTimer();
+  state.pendingReset = null;
   Sync.unsubscribe();
   closeMenu();
   showScreen('screen-auth');
@@ -213,6 +220,8 @@ const PAGES = {
 };
 
 function navigate(tab) {
+  // Leaving the current view flushes any reset still in its undo window.
+  if (state.pendingReset) commitPendingReset();
   state.tab = tab;
   const pageId = PAGES[state.mode][tab];
 
@@ -1321,6 +1330,66 @@ function initSettings() {
   document.getElementById('btn-rewind').addEventListener('click', onRewind);
   document.getElementById('announce-form').addEventListener('submit', onSendAnnouncement);
   document.getElementById('announce-toggle').addEventListener('click', toggleAnnounceBanner);
+  document.getElementById('btn-reset-undo').addEventListener('click', undoPendingReset);
+
+  // Show/hide toggles for the password fields.
+  initPasswordToggles();
+
+  // Inline validation on blur (submit still re-validates and focuses the field).
+  document.getElementById('settings-name').addEventListener('blur', validateNameField);
+  document.getElementById('settings-password2').addEventListener('blur', validatePasswordFields);
+}
+
+// Flip each password field between hidden and visible.
+function initPasswordToggles() {
+  document.querySelectorAll('.pw-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = document.getElementById(btn.dataset.target);
+      if (!input) return;
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      btn.textContent = show ? 'Verbergen' : 'Zeigen';
+      btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+      btn.setAttribute('aria-label', show ? 'Passwort verbergen' : 'Passwort anzeigen');
+    });
+  });
+}
+
+// Reset both password fields back to hidden (called on each Settings render).
+function resetPasswordToggles() {
+  document.querySelectorAll('.pw-toggle').forEach(btn => {
+    const input = document.getElementById(btn.dataset.target);
+    if (input) input.type = 'password';
+    btn.textContent = 'Zeigen';
+    btn.setAttribute('aria-pressed', 'false');
+    btn.setAttribute('aria-label', 'Passwort anzeigen');
+  });
+}
+
+// Inline validators — reuse the same rules as the submit handlers, surfaced via
+// the existing role="alert" message elements. Empty fields clear the message.
+function validateNameField() {
+  const name = document.getElementById('settings-name').value.trim();
+  if (!name) { setSettingsMsg('name-msg', ''); return; }
+  const s = Auth.slug(name);
+  if (s.length < 2 || s.length > 30) {
+    setSettingsMsg('name-msg', 'Name muss 2 bis 30 Zeichen (Buchstaben/Zahlen) enthalten.', 'error');
+  } else {
+    setSettingsMsg('name-msg', '');
+  }
+}
+
+function validatePasswordFields() {
+  const pw = document.getElementById('settings-password').value;
+  const pw2 = document.getElementById('settings-password2').value;
+  if (!pw2) { setSettingsMsg('password-msg', ''); return; }
+  if (pw2.length < 6) {
+    setSettingsMsg('password-msg', 'Passwort muss mindestens 6 Zeichen lang sein.', 'error');
+  } else if (pw !== pw2) {
+    setSettingsMsg('password-msg', 'Die Passwörter stimmen nicht überein.', 'error');
+  } else {
+    setSettingsMsg('password-msg', '');
+  }
 }
 
 function setSettingsMsg(id, msg, kind) {
@@ -1336,10 +1405,20 @@ function renderSettings() {
   if (nameInput) nameInput.value = state.username || '';
   document.getElementById('settings-password').value = '';
   document.getElementById('settings-password2').value = '';
+  resetPasswordToggles();
   setSettingsMsg('name-msg', '');
   setSettingsMsg('password-msg', '');
-  setSettingsMsg('reset-msg', '');
   setSettingsMsg('announce-msg', '');
+
+  // Sync the deferred-reset undo bar with any reset still in its window.
+  const undoBar = document.getElementById('reset-undo');
+  if (state.pendingReset) {
+    document.getElementById('reset-undo-text').textContent = state.pendingReset.label || '';
+    undoBar.classList.remove('hidden');
+  } else {
+    undoBar.classList.add('hidden');
+    setSettingsMsg('reset-msg', '');
+  }
 
   // Messages archive (all users) + compose form (admins only).
   renderMessagesList();
@@ -1403,6 +1482,13 @@ function renderPhaseClearList() {
     btn.addEventListener('click', () => onClearPhase(Number(btn.dataset.phase))));
 
   PLAN.phases.forEach(async (p) => {
+    // While a reset is pending, show its optimistic count instead of fetching.
+    const override = pendingResetCountFor(p.number);
+    if (override !== null) {
+      const el = document.getElementById(`phase-count-${p.number}`);
+      if (el) el.textContent = `${override} Sessions`;
+      return;
+    }
     const { count } = await DB.getSessionCount(state.userId, p.number);
     const el = document.getElementById(`phase-count-${p.number}`);
     if (el) el.textContent = `${count || 0} Sessions`;
@@ -1416,10 +1502,12 @@ async function onNameSubmit(e) {
   const s = Auth.slug(name);
   if (s.length < 2 || s.length > 30) {
     setSettingsMsg('name-msg', 'Name muss 2 bis 30 Zeichen (Buchstaben/Zahlen) enthalten.', 'error');
+    document.getElementById('settings-name').focus();
     return;
   }
   if (name === state.username) {
     setSettingsMsg('name-msg', 'Das ist bereits dein Name.', 'error');
+    document.getElementById('settings-name').focus();
     return;
   }
 
@@ -1450,10 +1538,12 @@ async function onPasswordSubmit(e) {
 
   if (pw.length < 6) {
     setSettingsMsg('password-msg', 'Passwort muss mindestens 6 Zeichen lang sein.', 'error');
+    document.getElementById('settings-password').focus();
     return;
   }
   if (pw !== pw2) {
     setSettingsMsg('password-msg', 'Die Passwörter stimmen nicht überein.', 'error');
+    document.getElementById('settings-password2').focus();
     return;
   }
 
@@ -1483,87 +1573,157 @@ function applyResetUi() {
   renderSettings();
 }
 
-async function onRewind() {
+// ── Deferred destructive resets (undo window) ──────────────────────────────
+// Rewind / clear-phase update the UI optimistically, then commit the real DB
+// deletes after a short window. Undo just cancels the timer — nothing was
+// deleted server-side, so it is a pure UI restore. Leaving the screen (navigate
+// / sign-out) or starting another reset flushes the pending one first.
+const RESET_UNDO_MS = 6000;
+
+// The optimistic session count a phase should read while a reset is pending, or
+// null if this phase is unaffected (so renderPhaseClearList fetches the real one).
+function pendingResetCountFor(phaseNumber) {
+  const pr = state.pendingReset;
+  if (!pr) return null;
+  if (pr.kind === 'clear') return phaseNumber === pr.P ? 0 : null;
+  // rewind: the target phase keeps `keptCount`; every later phase is emptied.
+  if (phaseNumber === pr.P) return pr.keptCount;
+  if (phaseNumber > pr.P) return 0;
+  return null;
+}
+
+function clearPendingResetTimer() {
+  if (state.pendingReset && state.pendingReset.timer) {
+    clearTimeout(state.pendingReset.timer);
+    state.pendingReset.timer = null;
+  }
+}
+
+function onRewind() {
+  commitPendingReset();               // flush any earlier pending reset first
   const P = Number(document.getElementById('rewind-phase').value);
   const W = Number(document.getElementById('rewind-week').value);
   const keep = (W - 1) * 2;
-  setSettingsMsg('reset-msg', '');
 
-  const ok = confirm(
-    `Wirklich auf Phase ${P}, Woche ${W} zurückspulen? ` +
-    'Alle Sessions ab diesem Punkt (auch spätere Phasen) werden gelöscht.');
-  if (!ok) return;
+  const prevState = {
+    currentPhase: state.currentPhase,
+    sessionCount: state.sessionCount,
+    lastSession: state.lastSession,
+  };
+  // Optimistic kept-count estimate; commit recomputes the exact value from the DB.
+  const keptCount = P === state.currentPhase ? Math.min(keep, state.sessionCount) : keep;
 
-  const btn = document.getElementById('btn-rewind');
-  btn.disabled = true;
-
-  let keptCount = keep;
-  try {
-    // 1. Trim the target phase: keep the oldest `keep` sessions, delete the rest.
-    const { data: sessions, error: getErr } = await DB.getSessions(state.userId, P);
-    if (getErr) throw getErr;
-    const ordered = sessions || [];
-    const toDelete = ordered.slice(keep).map(row => row.id);
-    keptCount = ordered.length - toDelete.length; // clamps if user has fewer sessions
-    if (toDelete.length) {
-      const { error } = await DB.deleteSessionsByIds(toDelete);
-      if (error) throw error;
-    }
-    // 2. Delete every session in later phases.
-    for (const phase of PLAN.phases) {
-      if (phase.number > P) {
-        const { error } = await DB.deleteSessionsForPhase(state.userId, phase.number);
-        if (error) throw error;
-      }
-    }
-    // 3. Move the current-phase pointer back to P.
-    const { error: profErr } = await DB.upsertProfile(state.userId, P);
-    if (profErr) throw profErr;
-  } catch (err) {
-    console.error('Rewind failed:', err);
-    btn.disabled = false;
-    setSettingsMsg('reset-msg', 'Konnte nicht zurücksetzen. Bitte online sein und erneut versuchen.', 'error');
-    return;
-  }
-
-  pruneLocalAfterReset(P);
   state.currentPhase = P;
   state.sessionCount = keptCount;
   state.lastSession = null;
-  lsSet(`mu_phase_${state.userId}`, P);
-
-  btn.disabled = false;
+  state.pendingReset = {
+    kind: 'rewind', P, W, keep, keptCount,
+    label: `Zurückgespult auf Phase ${P}, Woche ${W}.`,
+    prevState, timer: null,
+  };
   applyResetUi();
-  setSettingsMsg('reset-msg', `Zurückgespult auf Phase ${P}, Woche ${W}.`, 'success');
+  state.pendingReset.timer = setTimeout(commitPendingReset, RESET_UNDO_MS);
 }
 
-async function onClearPhase(P) {
-  setSettingsMsg('reset-msg', '');
-  const ok = confirm(`Wirklich alle Sessions von Phase ${P} löschen?`);
-  if (!ok) return;
+function onClearPhase(P) {
+  commitPendingReset();               // flush any earlier pending reset first
 
-  const btn = document.querySelector(`.btn-clear[data-phase="${P}"]`);
-  if (btn) btn.disabled = true;
-
-  const { error } = await DB.deleteSessionsForPhase(state.userId, P);
-  if (error) {
-    console.error('Clear phase failed:', error);
-    if (btn) btn.disabled = false;
-    setSettingsMsg('reset-msg', 'Konnte nicht zurücksetzen. Bitte online sein und erneut versuchen.', 'error');
-    return;
+  const prevState = {
+    currentPhase: state.currentPhase,
+    sessionCount: state.sessionCount,
+    lastSession: state.lastSession,
+  };
+  if (P === state.currentPhase) {
+    state.sessionCount = 0;
+    state.lastSession = null;
   }
+  state.pendingReset = {
+    kind: 'clear', P,
+    label: `Phase ${P} geleert.`,
+    prevState, timer: null,
+  };
+  applyResetUi();
+  state.pendingReset.timer = setTimeout(commitPendingReset, RESET_UNDO_MS);
+}
+
+// Undo: cancel the timer and restore the pre-action state. No DB work needed.
+function undoPendingReset() {
+  const pr = state.pendingReset;
+  if (!pr) return;
+  clearPendingResetTimer();
+  state.pendingReset = null;
+  state.currentPhase = pr.prevState.currentPhase;
+  state.sessionCount = pr.prevState.sessionCount;
+  state.lastSession = pr.prevState.lastSession;
+  applyResetUi();
+}
+
+// Commit: perform the actual DB deletes. Claims the pending reset up front so
+// re-entrant calls (navigate, a second reset) can't run it twice. On failure it
+// rolls back to the pre-action state — nothing was persisted.
+async function commitPendingReset() {
+  const pr = state.pendingReset;
+  if (!pr) return;
+  clearPendingResetTimer();
+  state.pendingReset = null;
+  document.getElementById('reset-undo').classList.add('hidden');
+
+  try {
+    if (pr.kind === 'clear') await commitClearPhase(pr);
+    else await commitRewind(pr);
+  } catch (err) {
+    console.error('Reset commit failed:', err);
+    state.currentPhase = pr.prevState.currentPhase;
+    state.sessionCount = pr.prevState.sessionCount;
+    state.lastSession = pr.prevState.lastSession;
+    applyResetUi();
+    setSettingsMsg('reset-msg', 'Konnte nicht zurücksetzen. Bitte online sein und erneut versuchen.', 'error');
+  }
+}
+
+async function commitClearPhase(pr) {
+  const P = pr.P;
+  const { error } = await DB.deleteSessionsForPhase(state.userId, P);
+  if (error) throw error;
 
   // Drop queued offline sessions for this phase and reset its banner-dismiss flag.
   const pending = (lsGet('mu_pending_sessions') || []).filter(row => Number(row.phase) !== P);
   lsSet('mu_pending_sessions', pending);
   localStorage.removeItem(`mu_phase${P}_transition_dismissed_${state.userId}`);
-
-  if (P === state.currentPhase) {
-    state.sessionCount = 0;
-    state.lastSession = null;
-  }
-  applyResetUi();
+  applyResetUi();                      // reconcile leaderboard/counts with the DB
   setSettingsMsg('reset-msg', `Phase ${P} geleert.`, 'success');
+}
+
+async function commitRewind(pr) {
+  const { P, W, keep } = pr;
+  // 1. Trim the target phase: keep the oldest `keep` sessions, delete the rest.
+  const { data: sessions, error: getErr } = await DB.getSessions(state.userId, P);
+  if (getErr) throw getErr;
+  const ordered = sessions || [];
+  const toDelete = ordered.slice(keep).map(row => row.id);
+  const keptCount = ordered.length - toDelete.length; // clamps if user has fewer sessions
+  if (toDelete.length) {
+    const { error } = await DB.deleteSessionsByIds(toDelete);
+    if (error) throw error;
+  }
+  // 2. Delete every session in later phases.
+  for (const phase of PLAN.phases) {
+    if (phase.number > P) {
+      const { error } = await DB.deleteSessionsForPhase(state.userId, phase.number);
+      if (error) throw error;
+    }
+  }
+  // 3. Move the current-phase pointer back to P.
+  const { error: profErr } = await DB.upsertProfile(state.userId, P);
+  if (profErr) throw profErr;
+
+  pruneLocalAfterReset(P);
+  state.currentPhase = P;
+  state.sessionCount = keptCount;      // reconcile with the exact server-side count
+  state.lastSession = null;
+  lsSet(`mu_phase_${state.userId}`, P);
+  applyResetUi();
+  setSettingsMsg('reset-msg', `Zurückgespult auf Phase ${P}, Woche ${W}.`, 'success');
 }
 
 // After a rewind to phase `fromPhase`: drop queued sessions at/after that point
