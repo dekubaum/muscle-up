@@ -51,6 +51,18 @@ function escapeHtml(str) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// Pop animation for a checkbox that was JUST checked (never on uncheck, never
+// from a passive re-render — call sites only invoke this when cb.checked is
+// newly true). Force a reflow before re-adding the class so a rapid re-check
+// within the animation window still restarts it.
+function popCheckbox(cb) {
+  cb.classList.remove('pop');
+  void cb.offsetWidth;
+  cb.classList.add('pop');
+  clearTimeout(cb._popTimer);
+  cb._popTimer = setTimeout(() => cb.classList.remove('pop'), 200);
+}
+
 // ── Screen management ──────────────────────────────────────────────────────
 function showScreen(id) {
   document.querySelectorAll('#screen-auth, #screen-app')
@@ -222,23 +234,39 @@ const PAGES = {
 function navigate(tab) {
   // Leaving the current view flushes any reset still in its undo window.
   if (state.pendingReset) commitPendingReset();
-  state.tab = tab;
   const pageId = PAGES[state.mode][tab];
 
-  document.querySelectorAll('.page').forEach(p =>
-    p.classList.toggle('hidden', p.id !== pageId));
-  document.querySelectorAll('.nav-item[data-tab]').forEach(item =>
-    item.classList.toggle('active', item.dataset.tab === tab));
+  const proceed = () => {
+    state.tab = tab;
+    document.querySelectorAll('.page').forEach(p =>
+      p.classList.toggle('hidden', p.id !== pageId));
+    document.querySelectorAll('.nav-item[data-tab]').forEach(item =>
+      item.classList.toggle('active', item.dataset.tab === tab));
 
-  closeMenu();
-  window.scrollTo(0, 0);
+    closeMenu();
+    window.scrollTo(0, 0);
 
-  // Render the content for the resolved (mode, tab) combination.
-  if (tab === 'today' && state.mode === 'handstand') renderHandstand();
-  else if (tab === 'leaderboard') {
-    state.mode === 'handstand' ? renderHandstandStandings() : renderLeaderboard();
-  } else if (tab === 'plan' && state.mode === 'handstand') renderHandstandPlan();
-  else if (tab === 'settings') renderSettings();
+    // Render the content for the resolved (mode, tab) combination.
+    if (tab === 'today' && state.mode === 'handstand') renderHandstand();
+    else if (tab === 'leaderboard') {
+      state.mode === 'handstand' ? renderHandstandStandings() : renderLeaderboard();
+    } else if (tab === 'plan' && state.mode === 'handstand') renderHandstandPlan();
+    else if (tab === 'settings') renderSettings();
+  };
+
+  // Give the outgoing page a brief exit fade before swapping content; skip the
+  // delay entirely when re-navigating to the page already showing.
+  const current = document.querySelector('.page:not(.hidden)');
+  if (current && current.id !== pageId) {
+    clearTimeout(current._leaveTimer);
+    current.classList.add('leaving');
+    current._leaveTimer = setTimeout(() => {
+      current.classList.remove('leaving');
+      proceed();
+    }, 120);
+  } else {
+    proceed();
+  }
 }
 
 // Switch training mode: persist it, update the toggle, and re-resolve the
@@ -256,6 +284,48 @@ function syncModeToggle() {
     const on = btn.dataset.mode === state.mode;
     btn.classList.toggle('active', on);
     btn.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+}
+
+// ── Theme (light/dark/system) ───────────────────────────────────────────────
+function resolveTheme() {
+  const stored = lsGet('mu_theme');
+  return stored === 'light' || stored === 'dark' ? stored : 'system';
+}
+
+function applyTheme() {
+  const choice = resolveTheme();
+  if (choice === 'system') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', choice);
+
+  const isDark = choice === 'dark' ||
+    (choice === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', isDark ? '#0d0f13' : '#f6f7f9');
+
+  syncThemeToggle(choice);
+}
+
+function setTheme(choice) {
+  if (choice === 'system') localStorage.removeItem('mu_theme');
+  else lsSet('mu_theme', choice);
+  applyTheme();
+}
+
+function syncThemeToggle(choice) {
+  document.querySelectorAll('.mode-btn[data-theme-choice]').forEach(btn => {
+    const on = btn.dataset.themeChoice === choice;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+}
+
+function initThemeToggle() {
+  document.querySelectorAll('.mode-btn[data-theme-choice]').forEach(btn =>
+    btn.addEventListener('click', () => setTheme(btn.dataset.themeChoice)));
+  applyTheme();
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (resolveTheme() === 'system') applyTheme();
   });
 }
 
@@ -306,7 +376,9 @@ function renderPhaseBanner() {
     `${state.sessionCount}/${phase.totalSessions} Sessions`;
 
   const pct = Math.min((state.sessionCount / phase.totalSessions) * 100, 100);
-  document.getElementById('progress-fill').style.width = `${pct}%`;
+  const fill = document.getElementById('progress-fill');
+  fill.style.width = `${pct}%`;
+  fill.classList.toggle('is-complete', pct >= 100);
 }
 
 // ── Workout rendering ──────────────────────────────────────────────────────
@@ -337,7 +409,7 @@ function renderWorkout() {
       cb.id = setId;
       cb.addEventListener('change', () => {
         hidePostSessionBar();
-        if (cb.checked) state.checkedSets.add(setId);
+        if (cb.checked) { state.checkedSets.add(setId); popCheckbox(cb); }
         else state.checkedSets.delete(setId);
         updateCompleteButton(phase);
       });
@@ -602,6 +674,7 @@ function checkPhaseTransition() {
 
     content.querySelectorAll('.phase3-check').forEach(cb => {
       cb.addEventListener('change', () => {
+        if (cb.checked) popCheckbox(cb);
         const checked = content.querySelectorAll('.phase3-check:checked').length;
         btn.disabled = checked < PLAN.phase3Checklist.length;
       });
@@ -782,7 +855,7 @@ function renderHandstandExercises() {
     cb.addEventListener('change', () => {
       hideHandstandBar();
       const id = cb.dataset.id;
-      if (cb.checked) state.checkedHandstand.add(id);
+      if (cb.checked) { state.checkedHandstand.add(id); popCheckbox(cb); }
       else state.checkedHandstand.delete(id);
       updateHandstandButton();
     });
@@ -989,10 +1062,11 @@ function renderAnnouncementBanner() {
 
   const toggle = document.getElementById('announce-toggle');
   const body = document.getElementById('announce-body');
+  const bodyInner = document.getElementById('announce-body-inner');
   toggle.setAttribute('aria-expanded', String(announceExpanded));
-  body.classList.toggle('hidden', !announceExpanded);
+  body.classList.toggle('expanded', announceExpanded);
 
-  body.innerHTML = unread.map(a => `
+  bodyInner.innerHTML = unread.map(a => `
     <div class="announce-item">
       <div class="announce-item-title">${escapeHtml(a.title)}</div>
       <div class="announce-item-date">${formatAnnounceDate(a.created_at)}</div>
@@ -1001,7 +1075,7 @@ function renderAnnouncementBanner() {
     </div>
   `).join('');
 
-  body.querySelectorAll('.btn-announce-read').forEach(btn =>
+  bodyInner.querySelectorAll('.btn-announce-read').forEach(btn =>
     btn.addEventListener('click', () => markAnnouncementRead(btn.dataset.id)));
 }
 
@@ -1164,14 +1238,23 @@ function openFeedbackModal() {
   syncFeedbackTypeButtons();
   updateFeedbackSubmit();
   setSettingsMsg('feedback-msg', '');
-  document.getElementById('feedback-modal').classList.remove('hidden');
+  const modal = document.getElementById('feedback-modal');
+  clearTimeout(modal._closeTimer);
+  modal.classList.remove('closing');
+  modal.classList.remove('hidden');
   document.body.classList.add('nav-open'); // reuse scroll-lock
   const ta = document.getElementById('feedback-message');
   if (ta) setTimeout(() => ta.focus(), 50);
 }
 
 function closeFeedbackModal() {
-  document.getElementById('feedback-modal').classList.add('hidden');
+  const modal = document.getElementById('feedback-modal');
+  modal.classList.add('closing');
+  clearTimeout(modal._closeTimer);
+  modal._closeTimer = setTimeout(() => {
+    modal.classList.add('hidden');
+    modal.classList.remove('closing');
+  }, 150);
   document.body.classList.remove('nav-open');
 }
 
@@ -1764,6 +1847,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initNav();
   initSettings();
   initFeedback();
+  initThemeToggle();
 
   // Subsequent auth transitions: login (SIGNED_IN), logout (SIGNED_OUT), token
   // refresh. INITIAL_SESSION is ignored here — the explicit getSession() below

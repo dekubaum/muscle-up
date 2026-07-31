@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#f6f7f9">
   <title>Schla-Muscle-App</title>
+  <script>
+    (function () {
+      try {
+        var t = JSON.parse(localStorage.getItem('mu_theme'));
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -64,7 +72,9 @@
           <span id="announce-head-label" class="announce-head-label"></span>
           <span class="announce-chevron" aria-hidden="true">▾</span>
         </button>
-        <div id="announce-body" class="announce-body hidden"></div>
+        <div id="announce-body" class="announce-body">
+          <div id="announce-body-inner" class="announce-body-inner"></div>
+        </div>
       </div>
 
       <!-- Page: Heutige Einheit -->
@@ -162,6 +172,15 @@
 
       <!-- Page: Einstellungen -->
       <section id="page-settings" class="page hidden">
+
+        <div class="section">
+          <h3 class="section-title">Erscheinungsbild</h3>
+          <div class="mode-toggle" role="tablist" aria-label="Farbschema">
+            <button type="button" class="mode-btn" data-theme-choice="system" role="tab" aria-selected="false">System</button>
+            <button type="button" class="mode-btn" data-theme-choice="light" role="tab" aria-selected="false">Hell</button>
+            <button type="button" class="mode-btn" data-theme-choice="dark" role="tab" aria-selected="false">Dunkel</button>
+          </div>
+        </div>
 
         <div class="section">
           <h3 class="section-title">Name ändern</h3>
