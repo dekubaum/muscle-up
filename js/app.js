@@ -287,6 +287,48 @@ function syncModeToggle() {
   });
 }
 
+// ── Theme (light/dark/system) ───────────────────────────────────────────────
+function resolveTheme() {
+  const stored = lsGet('mu_theme');
+  return stored === 'light' || stored === 'dark' ? stored : 'system';
+}
+
+function applyTheme() {
+  const choice = resolveTheme();
+  if (choice === 'system') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', choice);
+
+  const isDark = choice === 'dark' ||
+    (choice === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', isDark ? '#0d0f13' : '#f6f7f9');
+
+  syncThemeToggle(choice);
+}
+
+function setTheme(choice) {
+  if (choice === 'system') localStorage.removeItem('mu_theme');
+  else lsSet('mu_theme', choice);
+  applyTheme();
+}
+
+function syncThemeToggle(choice) {
+  document.querySelectorAll('.mode-btn[data-theme-choice]').forEach(btn => {
+    const on = btn.dataset.themeChoice === choice;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+}
+
+function initThemeToggle() {
+  document.querySelectorAll('.mode-btn[data-theme-choice]').forEach(btn =>
+    btn.addEventListener('click', () => setTheme(btn.dataset.themeChoice)));
+  applyTheme();
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (resolveTheme() === 'system') applyTheme();
+  });
+}
+
 function openMenu() {
   document.getElementById('nav-menu').classList.add('open');
   document.getElementById('nav-scrim').classList.add('open');
@@ -1805,6 +1847,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initNav();
   initSettings();
   initFeedback();
+  initThemeToggle();
 
   // Subsequent auth transitions: login (SIGNED_IN), logout (SIGNED_OUT), token
   // refresh. INITIAL_SESSION is ignored here — the explicit getSession() below
