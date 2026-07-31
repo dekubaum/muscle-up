@@ -35,6 +35,20 @@
   --radius-sm: 8px;
   --radius-chip: 6px;
 
+  /* Spacing (named by pixel value — no build step, so a direct name stays
+     eyeball-verifiable against the rendered page; not an abstract 1-11 scale) */
+  --space-2: 2px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-10: 10px;
+  --space-12: 12px;
+  --space-14: 14px;
+  --space-16: 16px;
+  --space-18: 18px;
+  --space-20: 20px;
+  --space-24: 24px;
+  --space-28: 28px;
+
   /* Layout */
   --topbar-h: 56px;
 
