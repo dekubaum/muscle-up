@@ -222,23 +222,39 @@ const PAGES = {
 function navigate(tab) {
   // Leaving the current view flushes any reset still in its undo window.
   if (state.pendingReset) commitPendingReset();
-  state.tab = tab;
   const pageId = PAGES[state.mode][tab];
 
-  document.querySelectorAll('.page').forEach(p =>
-    p.classList.toggle('hidden', p.id !== pageId));
-  document.querySelectorAll('.nav-item[data-tab]').forEach(item =>
-    item.classList.toggle('active', item.dataset.tab === tab));
+  const proceed = () => {
+    state.tab = tab;
+    document.querySelectorAll('.page').forEach(p =>
+      p.classList.toggle('hidden', p.id !== pageId));
+    document.querySelectorAll('.nav-item[data-tab]').forEach(item =>
+      item.classList.toggle('active', item.dataset.tab === tab));
 
-  closeMenu();
-  window.scrollTo(0, 0);
+    closeMenu();
+    window.scrollTo(0, 0);
 
-  // Render the content for the resolved (mode, tab) combination.
-  if (tab === 'today' && state.mode === 'handstand') renderHandstand();
-  else if (tab === 'leaderboard') {
-    state.mode === 'handstand' ? renderHandstandStandings() : renderLeaderboard();
-  } else if (tab === 'plan' && state.mode === 'handstand') renderHandstandPlan();
-  else if (tab === 'settings') renderSettings();
+    // Render the content for the resolved (mode, tab) combination.
+    if (tab === 'today' && state.mode === 'handstand') renderHandstand();
+    else if (tab === 'leaderboard') {
+      state.mode === 'handstand' ? renderHandstandStandings() : renderLeaderboard();
+    } else if (tab === 'plan' && state.mode === 'handstand') renderHandstandPlan();
+    else if (tab === 'settings') renderSettings();
+  };
+
+  // Give the outgoing page a brief exit fade before swapping content; skip the
+  // delay entirely when re-navigating to the page already showing.
+  const current = document.querySelector('.page:not(.hidden)');
+  if (current && current.id !== pageId) {
+    clearTimeout(current._leaveTimer);
+    current.classList.add('leaving');
+    current._leaveTimer = setTimeout(() => {
+      current.classList.remove('leaving');
+      proceed();
+    }, 120);
+  } else {
+    proceed();
+  }
 }
 
 // Switch training mode: persist it, update the toggle, and re-resolve the
@@ -306,7 +322,9 @@ function renderPhaseBanner() {
     `${state.sessionCount}/${phase.totalSessions} Sessions`;
 
   const pct = Math.min((state.sessionCount / phase.totalSessions) * 100, 100);
-  document.getElementById('progress-fill').style.width = `${pct}%`;
+  const fill = document.getElementById('progress-fill');
+  fill.style.width = `${pct}%`;
+  fill.classList.toggle('is-complete', pct >= 100);
 }
 
 // ── Workout rendering ──────────────────────────────────────────────────────
@@ -989,10 +1007,11 @@ function renderAnnouncementBanner() {
 
   const toggle = document.getElementById('announce-toggle');
   const body = document.getElementById('announce-body');
+  const bodyInner = document.getElementById('announce-body-inner');
   toggle.setAttribute('aria-expanded', String(announceExpanded));
-  body.classList.toggle('hidden', !announceExpanded);
+  body.classList.toggle('expanded', announceExpanded);
 
-  body.innerHTML = unread.map(a => `
+  bodyInner.innerHTML = unread.map(a => `
     <div class="announce-item">
       <div class="announce-item-title">${escapeHtml(a.title)}</div>
       <div class="announce-item-date">${formatAnnounceDate(a.created_at)}</div>
@@ -1001,7 +1020,7 @@ function renderAnnouncementBanner() {
     </div>
   `).join('');
 
-  body.querySelectorAll('.btn-announce-read').forEach(btn =>
+  bodyInner.querySelectorAll('.btn-announce-read').forEach(btn =>
     btn.addEventListener('click', () => markAnnouncementRead(btn.dataset.id)));
 }
 
@@ -1164,14 +1183,23 @@ function openFeedbackModal() {
   syncFeedbackTypeButtons();
   updateFeedbackSubmit();
   setSettingsMsg('feedback-msg', '');
-  document.getElementById('feedback-modal').classList.remove('hidden');
+  const modal = document.getElementById('feedback-modal');
+  clearTimeout(modal._closeTimer);
+  modal.classList.remove('closing');
+  modal.classList.remove('hidden');
   document.body.classList.add('nav-open'); // reuse scroll-lock
   const ta = document.getElementById('feedback-message');
   if (ta) setTimeout(() => ta.focus(), 50);
 }
 
 function closeFeedbackModal() {
-  document.getElementById('feedback-modal').classList.add('hidden');
+  const modal = document.getElementById('feedback-modal');
+  modal.classList.add('closing');
+  clearTimeout(modal._closeTimer);
+  modal._closeTimer = setTimeout(() => {
+    modal.classList.add('hidden');
+    modal.classList.remove('closing');
+  }, 150);
   document.body.classList.remove('nav-open');
 }
 
