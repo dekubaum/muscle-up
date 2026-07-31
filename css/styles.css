@@ -13,6 +13,7 @@
 
   /* Accent (refined indigo) */
   --accent: #4f46e5;
+  --accent-rgb: 79, 70, 229; /* RGB triplet of --accent, for rgba() (e.g. progress-glow) */
   --accent-hover: #4338ca;
   --accent-soft: #eef2ff; /* indigo tint for badges / emphasis cards */
   --accent-light: #6366f1;/* accent text (plan titles, partner badge) */
@@ -27,6 +28,7 @@
   /* Text */
   --text: #18181b;        /* near-black body text */
   --text-muted: #6b7280;  /* secondary text (also used by inline dismiss btn) */
+  --on-fill: #fff;        /* text/icon color for controls filled with --accent/--success/--danger */
 
   /* Lines */
   --border: #e5e7eb;      /* hairlines — plan table only */
@@ -69,6 +71,7 @@
     --surface: #171a20;
     --surface2: #20242c;
     --accent: #818cf8;
+    --accent-rgb: 129, 140, 248;
     --accent-hover: #6366f1;
     --accent-soft: #1e2240;
     --accent-light: #a5b4fc;
@@ -80,6 +83,7 @@
     --text: #f4f4f5;
     --text-muted: #9aa0ab;
     --border: #2b2f38;
+    --on-fill: #111827;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.5);
     --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.55);
   }
@@ -90,6 +94,7 @@
   --surface: #171a20;
   --surface2: #20242c;
   --accent: #818cf8;
+  --accent-rgb: 129, 140, 248;
   --accent-hover: #6366f1;
   --accent-soft: #1e2240;
   --accent-light: #a5b4fc;
@@ -101,6 +106,7 @@
   --text: #f4f4f5;
   --text-muted: #9aa0ab;
   --border: #2b2f38;
+  --on-fill: #111827;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.5);
   --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.55);
 }
@@ -259,7 +265,7 @@ input[type="checkbox"]:focus-visible {
   width: 100%;
   padding: var(--space-14);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-fill);
   border: none;
   border-radius: var(--radius-btn);
   font-size: 1rem;
@@ -508,8 +514,8 @@ body.nav-open { overflow: hidden; }
 
 /* Brief glow when a phase's progress reaches 100%. */
 @keyframes progress-glow {
-  0%   { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.45); }
-  100% { box-shadow: 0 0 0 6px rgba(79, 70, 229, 0); }
+  0%   { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.45); }
+  100% { box-shadow: 0 0 0 6px rgba(var(--accent-rgb), 0); }
 }
 .progress-fill.is-complete { animation: progress-glow 0.6s var(--ease); }
 
@@ -572,7 +578,7 @@ body.nav-open { overflow: hidden; }
   margin-top: var(--space-18);
   padding: var(--space-16);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-fill);
   border: none;
   border-radius: var(--radius-btn);
   font-size: 1rem;
@@ -626,7 +632,7 @@ body.nav-open { overflow: hidden; }
 }
 
 .btn-undo { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
-.btn-repeat { background: var(--accent); color: #fff; }
+.btn-repeat { background: var(--accent); color: var(--on-fill); }
 .btn-repeat:hover { background: var(--accent-hover); }
 .btn-post-action:active { transform: scale(0.96); }
 
@@ -672,7 +678,7 @@ body.nav-open { overflow: hidden; }
   width: 100%;
   padding: var(--space-14);
   background: var(--success);
-  color: #fff;
+  color: var(--on-fill);
   border: none;
   border-radius: var(--radius-btn);
   font-size: 0.95rem;
@@ -883,7 +889,7 @@ body.nav-open { overflow: hidden; }
   width: 100%;
   padding: var(--space-14);
   background: var(--danger);
-  color: #fff;
+  color: var(--on-fill);
   border: none;
   border-radius: var(--radius-btn);
   font-size: 1rem;
@@ -970,7 +976,7 @@ body.nav-open { overflow: hidden; }
   transition-timing-function: var(--ease);
 }
 .btn-clear:disabled { opacity: 0.45; cursor: not-allowed; }
-.btn-clear:not(:disabled):hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+.btn-clear:not(:disabled):hover { background: var(--danger); color: var(--on-fill); border-color: var(--danger); }
 .btn-clear:not(:disabled):active { transform: scale(0.96); }
 
 /* ── Handstand ── */
@@ -1088,13 +1094,22 @@ body.nav-open { overflow: hidden; }
 }
 .announce-head[aria-expanded="true"] .announce-chevron { transform: rotate(180deg); }
 
-/* Grid-rows collapse: animates height without measuring scrollHeight in JS. */
+/* Grid-rows collapse: animates height without measuring scrollHeight in JS.
+   visibility is paired with the grid collapse so collapsed content also leaves the tab
+   order / accessibility tree (grid-template-rows: 0fr alone only clips it visually) —
+   the transition delay lets collapsing wait for the grid animation to finish, while
+   expanding becomes visible immediately. */
 .announce-body {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 0.25s var(--ease);
+  visibility: hidden;
+  transition: grid-template-rows 0.25s var(--ease), visibility 0s linear 0.25s;
 }
-.announce-body.expanded { grid-template-rows: 1fr; }
+.announce-body.expanded {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition: grid-template-rows 0.25s var(--ease), visibility 0s linear 0s;
+}
 
 .announce-body-inner {
   overflow: hidden;
@@ -1133,7 +1148,7 @@ body.nav-open { overflow: hidden; }
   justify-content: center;
   padding: var(--space-10) var(--space-16);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-fill);
   border: none;
   border-radius: var(--radius-btn);
   font-size: 0.85rem;
@@ -1163,7 +1178,7 @@ body.nav-open { overflow: hidden; }
 .message-new-tag {
   flex-shrink: 0;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-fill);
   font-size: 0.65rem;
   font-weight: 700;
   text-transform: uppercase;

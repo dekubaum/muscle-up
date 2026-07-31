@@ -146,9 +146,15 @@ deadlock), and same-user token refreshes are short-circuited (`uid === state.use
 with the `profiles` row. Keys: `mu_phase_<userId>`, `mu_pending_sessions` (records carry `user_id`),
 `mu_phase<N>_transition_dismissed_<userId>`, `mu_mode_<userId>` (last-used training mode),
 `mu_handstand_block_<userId>` (last-picked handstand block), `mu_pending_reads` (offline queue of
-announcement read receipts `[{ announcement_id, user_id }]`; global, like `mu_pending_sessions`), and
+announcement read receipts `[{ announcement_id, user_id }]`; global, like `mu_pending_sessions`),
 `mu_pending_feedback` (offline queue of anonymous feedback `[{ id, type, message, context }]`; global,
-**no `user_id`** — feedback is anonymous).
+**no `user_id`** — feedback is anonymous), and `mu_theme` (`'light'`/`'dark'`, absent = follow system;
+global, not per-user like `mu_mode_<userId>`, because it must apply on the auth screen before any
+user is identified). `mu_theme` drives the `data-theme` HTML attribute (`light`/`dark`, absent =
+follow OS via `prefers-color-scheme`), which is what `css/styles.css`'s dark-mode blocks actually
+key off; [index.html](index.html)'s anti-FOUC inline `<script>` reads `mu_theme` and sets
+`data-theme` before first paint, and **must stay positioned before the CSS `<link>` tag** —
+load-order-sensitive, moving it later reintroduces a flash of the wrong theme.
 
 **Phase progression.** `state.sessionCount` counts sessions in the *current* phase. When it
 reaches that phase's `totalSessions`, a transition banner appears. The 2→3 transition is gated
@@ -236,6 +242,10 @@ than extending it — its own `render*`, its own offline queue, **no realtime**.
   sessions, then moves the `current_phase` pointer back. `onClearPhase` deletes just one phase's
   sessions. Both also prune the offline queue and the per-phase `…_transition_dismissed_…` flags
   (`pruneLocalAfterReset`) so banners re-evaluate cleanly.
+- **Erscheinungsbild** (System/Hell/Dunkel) — a three-way toggle calling `setTheme`, which writes
+  `mu_theme` (or clears it for System) and calls `applyTheme` to set the `data-theme` attribute and
+  the `theme-color` meta tag. `initThemeToggle` also listens for OS scheme changes so "System" stays
+  live without a reload.
 
 **Naming drift — do not "fix".** The app is branded "Schla-Muscle-App" in the UI, but internal
 identifiers were intentionally left unchanged: localStorage keys are `mu_*`, the synthetic email
