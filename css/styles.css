@@ -56,6 +56,47 @@
   --ease: cubic-bezier(0.2, 0, 0, 1);
 }
 
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d0f13;
+    --surface: #171a20;
+    --surface2: #20242c;
+    --accent: #818cf8;
+    --accent-hover: #6366f1;
+    --accent-soft: #1e2240;
+    --accent-light: #a5b4fc;
+    --success: #34d399;
+    --success-soft: #113224;
+    --danger: #f87171;
+    --danger-hover: #ef4444;
+    --danger-soft: #3b1616;
+    --text: #f4f4f5;
+    --text-muted: #9aa0ab;
+    --border: #2b2f38;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.5);
+    --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.55);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d0f13;
+  --surface: #171a20;
+  --surface2: #20242c;
+  --accent: #818cf8;
+  --accent-hover: #6366f1;
+  --accent-soft: #1e2240;
+  --accent-light: #a5b4fc;
+  --success: #34d399;
+  --success-soft: #113224;
+  --danger: #f87171;
+  --danger-hover: #ef4444;
+  --danger-soft: #3b1616;
+  --text: #f4f4f5;
+  --text-muted: #9aa0ab;
+  --border: #2b2f38;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
@@ -249,6 +290,11 @@ input[type="checkbox"]:focus-visible {
   background: var(--bg);
   box-shadow: 0 1px 0 rgba(16, 24, 40, 0.06);
 }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .topbar { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08); }
+}
+:root[data-theme="dark"] .topbar { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08); }
 
 .topbar-title {
   font-weight: 700;
@@ -1237,6 +1283,10 @@ body.nav-open { overflow: hidden; }
 .fb-type { background: var(--accent-soft); color: var(--accent); }
 .fb-type-bug { background: var(--danger-soft); color: var(--danger-hover); }
 .fb-type-idea { background: #e0f2fe; color: #0369a1; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .fb-type-idea { background: #0c2a3d; color: #7dd3fc; }
+}
+:root[data-theme="dark"] .fb-type-idea { background: #0c2a3d; color: #7dd3fc; }
 .fb-type-praise { background: var(--success-soft); color: var(--success); }
 .fb-type-other { background: var(--surface2); color: var(--text-muted); }
 
