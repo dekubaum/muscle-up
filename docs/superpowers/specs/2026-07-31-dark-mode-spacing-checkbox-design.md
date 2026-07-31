@@ -40,7 +40,8 @@ uncheck.
 **Problem:** ~130 padding/margin/gap declarations use hand-picked pixel values. Auditing them
 by frequency shows the file already follows a fine, mostly-even 2px-step rhythm (2, 6, 8, 10,
 12, 14, 16, 18, 20, 24, 28 — each used multiple times, clearly intentional), not scattered
-noise. Six values are true outliers.
+noise. Seven values don't fit that rhythm: six get snapped to their nearest established rung,
+and one (a sub-pixel optical nudge) is deliberately left alone.
 
 (Corrected during planning: the original frequency count only captured the first value of
 multi-value shorthand declarations, missing the `4px`/`7px`/`11px` occurrences below — the
