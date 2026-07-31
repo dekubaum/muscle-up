@@ -40,7 +40,7 @@ uncheck.
 **Problem:** ~130 padding/margin/gap declarations use hand-picked pixel values. Auditing them
 by frequency shows the file already follows a fine, mostly-even 2px-step rhythm (2, 6, 8, 10,
 12, 14, 16, 18, 20, 24, 28 — each used multiple times, clearly intentional), not scattered
-noise. Only four values are true outliers.
+noise. Six values are true outliers.
 
 (Corrected during planning: the original frequency count only captured the first value of
 multi-value shorthand declarations, missing the `4px`/`7px`/`11px` occurrences below — the
@@ -64,8 +64,8 @@ no build step and direct names are easier to eyeball-verify):
 --space-28: 28px;
 ```
 
-Snap the four outliers to their nearest established rung (11 total occurrences shift by
-exactly 1px):
+Snap the six outliers to their nearest established rung. Most shifts are exactly 1px, except
+`4px` → `--space-6` (6px) which shifts by 2px (18 total occurrences across all six values):
 
 | Value | Occurrences | Snaps to | Where |
 |---|---|---|---|
