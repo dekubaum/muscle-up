@@ -72,7 +72,7 @@
     --surface2: #20242c;
     --accent: #818cf8;
     --accent-rgb: 129, 140, 248;
-    --accent-hover: #6366f1;
+    --accent-hover: #9aa5fa; /* lighter than --accent: on dark backgrounds hover should lift, not darken */
     --accent-soft: #1e2240;
     --accent-light: #a5b4fc;
     --success: #34d399;
@@ -95,7 +95,7 @@
   --surface2: #20242c;
   --accent: #818cf8;
   --accent-rgb: 129, 140, 248;
-  --accent-hover: #6366f1;
+  --accent-hover: #9aa5fa; /* lighter than --accent: on dark backgrounds hover should lift, not darken */
   --accent-soft: #1e2240;
   --accent-light: #a5b4fc;
   --success: #34d399;
