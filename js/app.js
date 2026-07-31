@@ -51,6 +51,18 @@ function escapeHtml(str) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// Pop animation for a checkbox that was JUST checked (never on uncheck, never
+// from a passive re-render — call sites only invoke this when cb.checked is
+// newly true). Force a reflow before re-adding the class so a rapid re-check
+// within the animation window still restarts it.
+function popCheckbox(cb) {
+  cb.classList.remove('pop');
+  void cb.offsetWidth;
+  cb.classList.add('pop');
+  clearTimeout(cb._popTimer);
+  cb._popTimer = setTimeout(() => cb.classList.remove('pop'), 200);
+}
+
 // ── Screen management ──────────────────────────────────────────────────────
 function showScreen(id) {
   document.querySelectorAll('#screen-auth, #screen-app')
@@ -355,7 +367,7 @@ function renderWorkout() {
       cb.id = setId;
       cb.addEventListener('change', () => {
         hidePostSessionBar();
-        if (cb.checked) state.checkedSets.add(setId);
+        if (cb.checked) { state.checkedSets.add(setId); popCheckbox(cb); }
         else state.checkedSets.delete(setId);
         updateCompleteButton(phase);
       });
@@ -620,6 +632,7 @@ function checkPhaseTransition() {
 
     content.querySelectorAll('.phase3-check').forEach(cb => {
       cb.addEventListener('change', () => {
+        if (cb.checked) popCheckbox(cb);
         const checked = content.querySelectorAll('.phase3-check:checked').length;
         btn.disabled = checked < PLAN.phase3Checklist.length;
       });
@@ -800,7 +813,7 @@ function renderHandstandExercises() {
     cb.addEventListener('change', () => {
       hideHandstandBar();
       const id = cb.dataset.id;
-      if (cb.checked) state.checkedHandstand.add(id);
+      if (cb.checked) { state.checkedHandstand.add(id); popCheckbox(cb); }
       else state.checkedHandstand.delete(id);
       updateHandstandButton();
     });

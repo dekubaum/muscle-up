@@ -102,6 +102,15 @@ body {
   to   { opacity: 0; transform: translateY(4px); }
 }
 
+/* Pop feedback when a checkbox is checked — triggered by JS (see popCheckbox in app.js),
+   never by the :checked selector alone, so it can't replay on an unrelated re-render. */
+@keyframes checkbox-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+input[type="checkbox"].pop { animation: checkbox-pop 0.2s var(--ease); }
+
 .page:not(.hidden) > * {
   animation: fade-up 0.4s var(--ease) both;
 }
@@ -115,6 +124,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .page:not(.hidden) > *,
   .page.leaving { animation: none; }
+  input[type="checkbox"].pop { animation: none; }
   * { transition: none !important; }
 }
 
