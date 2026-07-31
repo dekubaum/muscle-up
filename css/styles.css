@@ -1,5 +1,11 @@
 /* css/styles.css */
 :root {
+  /* Tells the browser which palette native form controls (inputs, scrollbars,
+     the built-in date/select pickers) should render in — without this, they
+     silently follow the OS scheme even when an explicit override picks the
+     other palette for the page's own colors. */
+  color-scheme: light;
+
   /* Surfaces */
   --bg: #f6f7f9;          /* page background (near-white) */
   --surface: #ffffff;     /* cards */
@@ -58,6 +64,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #0d0f13;
     --surface: #171a20;
     --surface2: #20242c;
@@ -78,6 +85,7 @@
   }
 }
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0d0f13;
   --surface: #171a20;
   --surface2: #20242c;
